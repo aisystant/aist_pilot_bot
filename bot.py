@@ -108,6 +108,25 @@ BLOOM_LEVELS = {
 # Автоматическое повышение уровня: после N тем на текущем уровне
 BLOOM_AUTO_UPGRADE_AFTER = 7  # после 7 тем уровень повышается
 
+# Варианты порядка тем
+TOPIC_ORDERS = {
+    "default": {
+        "emoji": "📋",
+        "name": "По умолчанию",
+        "desc": "Последовательный порядок тем"
+    },
+    "by_interests": {
+        "emoji": "🎯",
+        "name": "По интересам",
+        "desc": "Темы, близкие к твоим интересам, идут первыми"
+    },
+    "hybrid": {
+        "emoji": "⚖️",
+        "name": "Гибридный",
+        "desc": "Разделы по порядку, но внутри — по интересам"
+    }
+}
+
 # Лимит тем в день (для развития систематичности)
 DAILY_TOPICS_LIMIT = 2
 
@@ -138,6 +157,7 @@ class UpdateStates(StatesGroup):
     updating_duration = State()
     updating_schedule = State()
     updating_bloom_level = State()
+    updating_topic_order = State()
 
 # ============= БАЗА ДАННЫХ =============
 
@@ -187,6 +207,8 @@ async def init_db():
         # Новые поля для упрощённого онбординга
         await conn.execute('ALTER TABLE interns ADD COLUMN IF NOT EXISTS occupation TEXT DEFAULT \'\'')
         await conn.execute('ALTER TABLE interns ADD COLUMN IF NOT EXISTS motivation TEXT DEFAULT \'\'')
+        # Порядок тем: default, by_interests, hybrid
+        await conn.execute('ALTER TABLE interns ADD COLUMN IF NOT EXISTS topic_order TEXT DEFAULT \'default\'')
         
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS answers (
@@ -230,6 +252,7 @@ async def get_intern(chat_id: int) -> dict:
                 'topics_at_current_bloom': row['topics_at_current_bloom'] if row['topics_at_current_bloom'] else 0,
                 'topics_today': row['topics_today'] if row['topics_today'] else 0,
                 'last_topic_date': row['last_topic_date'],
+                'topic_order': row['topic_order'] if 'topic_order' in row.keys() else 'default',
                 'onboarding_completed': row['onboarding_completed']
             }
         else:
@@ -260,6 +283,7 @@ async def get_intern(chat_id: int) -> dict:
                 'topics_at_current_bloom': 0,
                 'topics_today': 0,
                 'last_topic_date': None,
+                'topic_order': 'default',
                 'onboarding_completed': False
             }
 
@@ -630,6 +654,89 @@ def get_sections_progress(completed_topics: list) -> list:
 
     return result
 
+def score_topic_by_interests(topic: dict, interests: list) -> int:
+    """Оценка темы по совпадению с интересами пользователя"""
+    if not interests:
+        return 0
+
+    score = 0
+    interests_lower = [i.lower() for i in interests]
+
+    # Проверяем title, main_concept, related_concepts
+    topic_text = (
+        topic.get('title', '').lower() + ' ' +
+        topic.get('main_concept', '').lower() + ' ' +
+        ' '.join(topic.get('related_concepts', [])).lower() + ' ' +
+        topic.get('pain_point', '').lower()
+    )
+
+    for interest in interests_lower:
+        # Простой поиск подстроки
+        if interest in topic_text:
+            score += 2
+        # Поиск по словам
+        for word in interest.split():
+            if len(word) > 3 and word in topic_text:
+                score += 1
+
+    return score
+
+def get_next_topic_index(intern: dict) -> Optional[int]:
+    """Получить индекс следующей темы с учётом порядка"""
+    completed = set(intern['completed_topics'])
+    current_idx = intern['current_topic_index']
+    topic_order = intern.get('topic_order', 'default')
+    interests = intern.get('interests', [])
+
+    # Получаем список непройденных тем
+    remaining = [(i, t) for i, t in enumerate(TOPICS) if i not in completed]
+
+    if not remaining:
+        return None
+
+    if topic_order == 'default':
+        # Просто следующая по порядку непройденная тема
+        for i, _ in remaining:
+            if i >= current_idx:
+                return i
+        # Если все после current_idx пройдены, берём первую непройденную
+        return remaining[0][0] if remaining else None
+
+    elif topic_order == 'by_interests':
+        # Сортируем все непройденные по интересам (descending), потом по индексу
+        scored = [(i, t, score_topic_by_interests(t, interests)) for i, t in remaining]
+        scored.sort(key=lambda x: (-x[2], x[0]))  # сначала по score (desc), потом по index
+        return scored[0][0] if scored else None
+
+    elif topic_order == 'hybrid':
+        # Находим текущий раздел (первый незавершённый)
+        sections_order = []
+        seen = set()
+        for topic in TOPICS:
+            sec = topic['section']
+            if sec not in seen:
+                seen.add(sec)
+                sections_order.append(sec)
+
+        # Находим первый раздел с непройденными темами
+        current_section = None
+        for sec in sections_order:
+            sec_topics = [(i, t) for i, t in remaining if t['section'] == sec]
+            if sec_topics:
+                current_section = sec
+                break
+
+        if not current_section:
+            return remaining[0][0] if remaining else None
+
+        # Внутри текущего раздела сортируем по интересам
+        section_remaining = [(i, t) for i, t in remaining if t['section'] == current_section]
+        scored = [(i, t, score_topic_by_interests(t, interests)) for i, t in section_remaining]
+        scored.sort(key=lambda x: (-x[2], x[0]))
+        return scored[0][0] if scored else None
+
+    return current_idx
+
 # ============= КЛАВИАТУРЫ =============
 
 def kb_experience() -> InlineKeyboardMarkup:
@@ -680,6 +787,7 @@ def kb_update_profile() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="⏱ Время на тему", callback_data="upd_duration"),
          InlineKeyboardButton(text="⏰ Расписание", callback_data="upd_schedule")],
         [InlineKeyboardButton(text="🎚 Уровень сложности", callback_data="upd_bloom")],
+        [InlineKeyboardButton(text="🔀 Порядок тем", callback_data="upd_topic_order")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="upd_cancel")]
     ])
 
@@ -698,6 +806,16 @@ def kb_bonus_question() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚀 Да, давай сложнее!", callback_data="bonus_yes")],
         [InlineKeyboardButton(text="✅ Достаточно", callback_data="bonus_no")]
+    ])
+
+def kb_topic_order() -> InlineKeyboardMarkup:
+    """Клавиатура для выбора порядка тем"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"{v['emoji']} {v['name']}",
+            callback_data=f"order_{k}"
+        )]
+        for k, v in TOPIC_ORDERS.items()
     ])
 
 def kb_skip_topic() -> InlineKeyboardMarkup:
@@ -995,9 +1113,27 @@ async def cmd_update(message: Message, state: FSMContext):
         await message.answer("Сначала пройди онбординг: /start")
         return
 
+    duration = STUDY_DURATIONS.get(str(intern['study_duration']), {})
+    bloom = BLOOM_LEVELS.get(intern['bloom_level'], BLOOM_LEVELS[1])
+    topic_order = TOPIC_ORDERS.get(intern.get('topic_order', 'default'), TOPIC_ORDERS['default'])
+
+    interests_str = ', '.join(intern['interests']) if intern['interests'] else 'не указаны'
+    motivation_short = intern.get('motivation', '')[:80] + '...' if len(intern.get('motivation', '')) > 80 else intern.get('motivation', '') or 'не указано'
+    goals_short = intern['goals'][:80] + '...' if len(intern['goals']) > 80 else intern['goals'] or 'не указано'
+
     await message.answer(
-        "Что хочешь обновить?\n\n"
-        "Это поможет мне лучше персонализировать материалы под тебя.",
+        f"👤 *{intern['name']}*\n"
+        f"💼 {intern.get('occupation', '') or 'не указано'}\n"
+        f"🎨 {interests_str}\n\n"
+        f"💫 *Важно:* {motivation_short}\n"
+        f"🎯 *Изменить:* {goals_short}\n\n"
+        f"{duration.get('emoji', '')} {duration.get('name', '')} на тему\n"
+        f"{bloom['emoji']} Уровень: {bloom['name']}\n"
+        f"{topic_order['emoji']} Порядок: {topic_order['name']}\n"
+        f"⏰ Напоминание в {intern['schedule_time']}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"*Что хочешь обновить?*",
+        parse_mode="Markdown",
         reply_markup=kb_update_profile()
     )
     await state.set_state(UpdateStates.choosing_field)
@@ -1108,6 +1244,40 @@ async def on_save_bloom(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"✅ Уровень сложности изменён на *{bloom['name']}*!\n\n"
         f"{bloom['desc']}\n\n"
+        f"/learn — продолжить обучение\n"
+        f"/update — обновить ещё что-то",
+        parse_mode="Markdown"
+    )
+    await state.clear()
+
+@router.callback_query(UpdateStates.choosing_field, F.data == "upd_topic_order")
+async def on_upd_topic_order(callback: CallbackQuery, state: FSMContext):
+    intern = await get_intern(callback.message.chat.id)
+    current_order = TOPIC_ORDERS.get(intern.get('topic_order', 'default'), TOPIC_ORDERS['default'])
+    await callback.answer()
+    await callback.message.edit_text(
+        f"🔀 *Текущий порядок:* {current_order['emoji']} {current_order['name']}\n"
+        f"_{current_order['desc']}_\n\n"
+        f"*Доступные варианты:*\n\n"
+        f"📋 *По умолчанию* — темы идут последовательно, как в курсе\n\n"
+        f"🎯 *По интересам* — темы, близкие к твоим интересам и хобби, показываются раньше\n\n"
+        f"⚖️ *Гибридный* — разделы идут по порядку, но внутри каждого раздела темы сортируются по интересам\n\n"
+        f"Выбери порядок:",
+        parse_mode="Markdown",
+        reply_markup=kb_topic_order()
+    )
+    await state.set_state(UpdateStates.updating_topic_order)
+
+@router.callback_query(UpdateStates.updating_topic_order, F.data.startswith("order_"))
+async def on_save_topic_order(callback: CallbackQuery, state: FSMContext):
+    order_key = callback.data.replace("order_", "")
+    await update_intern(callback.message.chat.id, topic_order=order_key)
+
+    order = TOPIC_ORDERS.get(order_key, TOPIC_ORDERS['default'])
+    await callback.answer(f"Порядок: {order['name']}")
+    await callback.message.edit_text(
+        f"✅ Порядок тем изменён на *{order['name']}*!\n\n"
+        f"{order['desc']}\n\n"
         f"/learn — продолжить обучение\n"
         f"/update — обновить ещё что-то",
         parse_mode="Markdown"
@@ -1391,13 +1561,19 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
         )
         return
 
-    topic = get_topic(intern['current_topic_index'])
+    # Получаем следующую тему с учётом порядка
+    topic_index = get_next_topic_index(intern)
+    topic = get_topic(topic_index) if topic_index is not None else None
+
+    # Обновляем current_topic_index на выбранную тему
+    if topic_index is not None and topic_index != intern['current_topic_index']:
+        await update_intern(chat_id, current_topic_index=topic_index)
 
     if not topic:
         await bot.send_message(
             chat_id,
             "🎉 *Поздравляю! Все темы пройдены!*\n\n"
-            "Ты прошёл весь базовый курс по системному мышлению.\n\n"
+            "Вы изучили все темы и встали на путь формирования системного мировоззрения.\n\n"
             "Хочешь продолжить развитие?\n"
             "Заходи в [Мастерскую инженеров-менеджеров](https://system-school.ru/) "
             "— там тебя ждут продвинутые программы.",
