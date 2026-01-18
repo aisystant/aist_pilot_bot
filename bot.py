@@ -10,7 +10,10 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Optional
+from pathlib import Path
+from typing import Optional, List
+
+import yaml
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
@@ -32,6 +35,7 @@ import asyncpg
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
+MCP_URL = os.getenv("MCP_URL", "https://guides-mcp.aisystant.workers.dev/mcp")
 
 if not BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не установлен!")
@@ -83,6 +87,8 @@ class OnboardingStates(StatesGroup):
     waiting_for_role = State()
     waiting_for_domain = State()
     waiting_for_interests = State()
+    waiting_for_problems = State()
+    waiting_for_desires = State()
     waiting_for_experience = State()
     waiting_for_difficulty = State()
     waiting_for_learning_style = State()
@@ -93,6 +99,12 @@ class OnboardingStates(StatesGroup):
 
 class LearningStates(StatesGroup):
     waiting_for_answer = State()
+
+class UpdateStates(StatesGroup):
+    choosing_field = State()
+    updating_problems = State()
+    updating_desires = State()
+    updating_goals = State()
 
 # ============= БАЗА ДАННЫХ =============
 
@@ -115,6 +127,8 @@ async def init_db():
                 difficulty_preference TEXT DEFAULT '',
                 learning_style TEXT DEFAULT '',
                 study_duration INTEGER DEFAULT 15,
+                current_problems TEXT DEFAULT '',
+                desires TEXT DEFAULT '',
                 goals TEXT DEFAULT '',
                 schedule_time TEXT DEFAULT '09:00',
                 current_topic_index INTEGER DEFAULT 0,
@@ -125,10 +139,10 @@ async def init_db():
             )
         ''')
 
-        # Миграция: добавляем поле study_duration если его нет
-        await conn.execute('''
-            ALTER TABLE interns ADD COLUMN IF NOT EXISTS study_duration INTEGER DEFAULT 15
-        ''')
+        # Миграции
+        await conn.execute('ALTER TABLE interns ADD COLUMN IF NOT EXISTS study_duration INTEGER DEFAULT 15')
+        await conn.execute('ALTER TABLE interns ADD COLUMN IF NOT EXISTS current_problems TEXT DEFAULT \'\'')
+        await conn.execute('ALTER TABLE interns ADD COLUMN IF NOT EXISTS desires TEXT DEFAULT \'\'')
         
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS answers (
@@ -160,6 +174,8 @@ async def get_intern(chat_id: int) -> dict:
                 'difficulty_preference': row['difficulty_preference'],
                 'learning_style': row['learning_style'],
                 'study_duration': row['study_duration'],
+                'current_problems': row['current_problems'] or '',
+                'desires': row['desires'] or '',
                 'goals': row['goals'],
                 'schedule_time': row['schedule_time'],
                 'current_topic_index': row['current_topic_index'],
@@ -182,6 +198,8 @@ async def get_intern(chat_id: int) -> dict:
                 'difficulty_preference': '',
                 'learning_style': '',
                 'study_duration': 15,
+                'current_problems': '',
+                'desires': '',
                 'goals': '',
                 'schedule_time': '09:00',
                 'current_topic_index': 0,
@@ -226,6 +244,8 @@ def get_personalization_prompt(intern: dict) -> str:
     duration = STUDY_DURATIONS.get(str(intern['study_duration']), {"words": 1500})
 
     interests = ', '.join(intern['interests']) if intern['interests'] else 'не указаны'
+    problems = intern.get('current_problems', '') or 'не указаны'
+    desires = intern.get('desires', '') or 'не указаны'
 
     return f"""
 ПРОФИЛЬ СТАЖЕРА:
@@ -233,17 +253,21 @@ def get_personalization_prompt(intern: dict) -> str:
 - Роль: {intern['role']}
 - Предметная область: {intern['domain']}
 - Интересы: {interests}
+- Текущие проблемы/боли: {problems}
+- Желания/чего хочет достичь: {desires}
 - Уровень опыта: {exp.get('name', '')} ({exp.get('desc', '')})
 - Желаемая сложность: {diff.get('name', '')} ({diff.get('desc', '')})
 - Стиль обучения: {style.get('name', '')} ({style.get('desc', '')})
 - Время на изучение: {intern['study_duration']} минут (~{duration.get('words', 1500)} слов)
-- Цели: {intern['goals']}
+- Цели обучения: {intern['goals']}
 
 ИНСТРУКЦИИ:
 1. Используй примеры из области "{intern['domain']}" и интересов стажера
-2. Адаптируй сложность под уровень "{diff.get('name', 'средний')}"
-3. {'Начинай с теории' if intern['learning_style'] == 'theoretical' else 'Начинай с практических примеров' if intern['learning_style'] == 'practical' else 'Чередуй теорию и практику'}
-4. Объём текста должен быть рассчитан на {intern['study_duration']} минут чтения (~{duration.get('words', 1500)} слов)
+2. Связывай материал с текущими проблемами стажера — показывай, как тема помогает их решить
+3. Показывай, как изучение темы приближает к желаемым результатам стажера
+4. Адаптируй сложность под уровень "{diff.get('name', 'средний')}"
+5. {'Начинай с теории' if intern['learning_style'] == 'theoretical' else 'Начинай с практических примеров' if intern['learning_style'] == 'practical' else 'Чередуй теорию и практику'}
+6. Объём текста должен быть рассчитан на {intern['study_duration']} минут чтения (~{duration.get('words', 1500)} слов)
 """
 
 # ============= CLAUDE API =============
@@ -281,18 +305,58 @@ class ClaudeClient:
                 logger.error(f"Claude API exception: {e}")
                 return None
 
-    async def generate_content(self, topic: dict, intern: dict) -> str:
+    async def generate_content(self, topic: dict, intern: dict, mcp_client=None) -> str:
         duration = STUDY_DURATIONS.get(str(intern['study_duration']), {"words": 1500})
         words = duration.get('words', 1500)
 
-        system_prompt = f"""Ты — персональный наставник.
+        # Получаем контекст из MCP (semantic search по теме)
+        mcp_context = ""
+        if mcp_client:
+            try:
+                search_query = f"{topic.get('title')} {topic.get('main_concept')}"
+                search_results = await mcp_client.semantic_search(search_query, lang="ru", limit=3)
+
+                if search_results:
+                    context_parts = []
+                    for item in search_results[:3]:
+                        if isinstance(item, dict):
+                            text = item.get('text', item.get('content', ''))
+                            if text:
+                                # Ограничиваем длину каждого фрагмента
+                                context_parts.append(text[:1500])
+                        elif isinstance(item, str):
+                            context_parts.append(item[:1500])
+
+                    if context_parts:
+                        mcp_context = "\n\n---\n\n".join(context_parts)
+                        logger.info(f"MCP: найдено {len(context_parts)} фрагментов контекста")
+            except Exception as e:
+                logger.error(f"MCP search error: {e}")
+
+        system_prompt = f"""Ты — персональный наставник по системному мышлению и личному развитию.
 {get_personalization_prompt(intern)}
 
-Создай текст на {intern['study_duration']} минут чтения (~{words} слов). Без заголовков, только абзацы."""
+Создай текст на {intern['study_duration']} минут чтения (~{words} слов). Без заголовков, только абзацы.
+Текст должен быть вовлекающим, с примерами из жизни читателя.
+{"Используй предоставленный контекст из руководств Aisystant как основу для материала." if mcp_context else ""}"""
+
+        # Формируем контекст из структуры знаний
+        pain_point = topic.get('pain_point', '')
+        key_insight = topic.get('key_insight', '')
+        source = topic.get('source', '')
 
         user_prompt = f"""Тема: {topic.get('title')}
 Основное понятие: {topic.get('main_concept')}
-Связанные понятия: {', '.join(topic.get('related_concepts', []))}"""
+Связанные понятия: {', '.join(topic.get('related_concepts', []))}
+
+{"Боль читателя: " + pain_point if pain_point else ""}
+{"Ключевой инсайт: " + key_insight if key_insight else ""}
+{"Источник: " + source if source else ""}
+
+{f"КОНТЕКСТ ИЗ РУКОВОДСТВ AISYSTANT:{chr(10)}{mcp_context}" if mcp_context else ""}
+
+Начни с признания боли читателя, затем раскрой тему и подведи к ключевому инсайту.
+{"Опирайся на контекст из руководств, но адаптируй под профиль стажера." if mcp_context else ""}"""
 
         result = await self.generate(system_prompt, user_prompt)
         return result or "Не удалось сгенерировать контент. Попробуйте /learn ещё раз."
@@ -310,37 +374,167 @@ class ClaudeClient:
 
 claude = ClaudeClient()
 
-# ============= ТЕМЫ =============
+# ============= MCP CLIENT =============
 
-TOPICS = [
-    {
-        "id": "what-is-system",
-        "section": "Системное мышление",
-        "subsection": "Основы",
-        "title": "Что такое система",
-        "main_concept": "система",
-        "related_concepts": ["элементы", "связи", "эмерджентность"]
-    },
-    {
-        "id": "system-approach",
-        "section": "Системное мышление",
-        "subsection": "Основы",
-        "title": "Системный подход",
-        "main_concept": "системный подход",
-        "related_concepts": ["редукционизм", "холизм", "анализ"]
-    },
-    {
-        "id": "system-boundaries",
-        "section": "Системное мышление",
-        "subsection": "Основы",
-        "title": "Границы системы",
-        "main_concept": "границы системы",
-        "related_concepts": ["окружение", "интерфейс", "контекст"]
-    }
-]
+class MCPClient:
+    """Клиент для работы с MCP сервером руководств Aisystant"""
+
+    def __init__(self):
+        self.base_url = MCP_URL
+        self._request_id = 0
+
+    def _next_id(self) -> int:
+        self._request_id += 1
+        return self._request_id
+
+    async def _call(self, tool_name: str, arguments: dict) -> Optional[dict]:
+        """Вызов инструмента MCP через JSON-RPC"""
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": arguments
+            },
+            "id": self._next_id()
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.base_url,
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if "result" in data:
+                            return data["result"]
+                        if "error" in data:
+                            logger.error(f"MCP error: {data['error']}")
+                            return None
+                    else:
+                        error = await resp.text()
+                        logger.error(f"MCP HTTP error {resp.status}: {error}")
+                        return None
+        except asyncio.TimeoutError:
+            logger.error("MCP request timeout")
+            return None
+        except Exception as e:
+            logger.error(f"MCP exception: {e}")
+            return None
+
+    async def get_guides_list(self, lang: str = "ru", category: str = None) -> List[dict]:
+        """Получить список всех руководств"""
+        args = {"lang": lang}
+        if category:
+            args["category"] = category
+
+        result = await self._call("get_guides_list", args)
+        if result and "content" in result:
+            # Парсим JSON из content
+            for item in result.get("content", []):
+                if item.get("type") == "text":
+                    try:
+                        return json.loads(item.get("text", "[]"))
+                    except json.JSONDecodeError:
+                        pass
+        return []
+
+    async def get_guide_sections(self, guide_slug: str, lang: str = "ru") -> List[dict]:
+        """Получить разделы конкретного руководства"""
+        result = await self._call("get_guide_sections", {
+            "guide_slug": guide_slug,
+            "lang": lang
+        })
+        if result and "content" in result:
+            for item in result.get("content", []):
+                if item.get("type") == "text":
+                    try:
+                        return json.loads(item.get("text", "[]"))
+                    except json.JSONDecodeError:
+                        pass
+        return []
+
+    async def get_section_content(self, guide_slug: str, section_slug: str, lang: str = "ru") -> str:
+        """Получить содержимое раздела"""
+        result = await self._call("get_section_content", {
+            "guide_slug": guide_slug,
+            "section_slug": section_slug,
+            "lang": lang
+        })
+        if result and "content" in result:
+            for item in result.get("content", []):
+                if item.get("type") == "text":
+                    return item.get("text", "")
+        return ""
+
+    async def semantic_search(self, query: str, lang: str = "ru", limit: int = 5) -> List[dict]:
+        """Семантический поиск по руководствам"""
+        result = await self._call("semantic_search", {
+            "query": query,
+            "lang": lang,
+            "limit": limit
+        })
+        if result and "content" in result:
+            for item in result.get("content", []):
+                if item.get("type") == "text":
+                    try:
+                        return json.loads(item.get("text", "[]"))
+                    except json.JSONDecodeError:
+                        # Если не JSON, возвращаем как текст
+                        return [{"text": item.get("text", "")}]
+        return []
+
+mcp = MCPClient()
+
+# ============= СТРУКТУРА ЗНАНИЙ =============
+
+def load_knowledge_structure() -> List[dict]:
+    """Загружает структуру знаний из YAML файла"""
+    yaml_path = Path(__file__).parent / "knowledge_structure.yaml"
+
+    if not yaml_path.exists():
+        logger.warning(f"Файл {yaml_path} не найден, используем пустую структуру")
+        return []
+
+    with open(yaml_path, 'r', encoding='utf-8') as f:
+        data = yaml.safe_load(f)
+
+    # Преобразуем иерархическую структуру в плоский список тем
+    topics = []
+    for section in data.get('sections', []):
+        section_title = section.get('title', '')
+        for topic in section.get('topics', []):
+            topics.append({
+                'id': topic.get('id', ''),
+                'section': section_title,
+                'subsection': f"Тема {topic.get('order', 0)}",
+                'title': topic.get('title', ''),
+                'main_concept': topic.get('main_concept', ''),
+                'related_concepts': topic.get('related_concepts', []),
+                'key_insight': topic.get('key_insight', ''),
+                'pain_point': topic.get('pain_point', ''),
+                'source': topic.get('source', '')
+            })
+
+    # Сортируем по порядку
+    topics.sort(key=lambda x: int(x['id'].split('-')[0]) * 100 + int(x['id'].split('-')[1]) if '-' in x['id'] else 0)
+
+    logger.info(f"✅ Загружено {len(topics)} тем из структуры знаний")
+    return topics
+
+# Загружаем темы при старте
+TOPICS = load_knowledge_structure()
 
 def get_topic(index: int) -> Optional[dict]:
+    """Получить тему по индексу"""
     return TOPICS[index] if index < len(TOPICS) else None
+
+def get_total_topics() -> int:
+    """Получить общее количество тем"""
+    return len(TOPICS)
 
 # ============= КЛАВИАТУРЫ =============
 
@@ -380,6 +574,14 @@ def kb_learn() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="▶️ Начать изучение", callback_data="learn")],
         [InlineKeyboardButton(text="⏭ Позже", callback_data="later")]
+    ])
+
+def kb_update_profile() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="😓 Проблемы", callback_data="upd_problems")],
+        [InlineKeyboardButton(text="✨ Желания", callback_data="upd_desires")],
+        [InlineKeyboardButton(text="🎯 Цели", callback_data="upd_goals")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="upd_cancel")]
     ])
 
 def progress_bar(completed: int, total: int) -> str:
@@ -434,6 +636,28 @@ async def on_domain(message: Message, state: FSMContext):
 async def on_interests(message: Message, state: FSMContext):
     interests = [i.strip() for i in message.text.replace(',', ';').split(';') if i.strip()]
     await update_intern(message.chat.id, interests=interests)
+    await message.answer(
+        "Какие у тебя сейчас *главные проблемы или сложности*?\n\n"
+        "Например: не хватает времени, сложно сосредоточиться, "
+        "не знаю с чего начать, выгораю на работе...",
+        parse_mode="Markdown"
+    )
+    await state.set_state(OnboardingStates.waiting_for_problems)
+
+@router.message(OnboardingStates.waiting_for_problems)
+async def on_problems(message: Message, state: FSMContext):
+    await update_intern(message.chat.id, current_problems=message.text.strip())
+    await message.answer(
+        "А чего ты *хочешь достичь*? Какой результат был бы для тебя идеальным?\n\n"
+        "Например: научиться управлять временем, стать увереннее, "
+        "разобраться в системном мышлении, найти своё дело...",
+        parse_mode="Markdown"
+    )
+    await state.set_state(OnboardingStates.waiting_for_desires)
+
+@router.message(OnboardingStates.waiting_for_desires)
+async def on_desires(message: Message, state: FSMContext):
+    await update_intern(message.chat.id, desires=message.text.strip())
     await message.answer("Какой у тебя уровень опыта?", reply_markup=kb_experience())
     await state.set_state(OnboardingStates.waiting_for_experience)
 
@@ -497,12 +721,17 @@ async def on_schedule(message: Message, state: FSMContext):
     style = LEARNING_STYLES.get(intern['learning_style'], {})
     duration = STUDY_DURATIONS.get(str(intern['study_duration']), {})
 
+    problems_short = intern['current_problems'][:100] + '...' if len(intern['current_problems']) > 100 else intern['current_problems']
+    desires_short = intern['desires'][:100] + '...' if len(intern['desires']) > 100 else intern['desires']
+
     await message.answer(
         f"📋 *Твой профиль:*\n\n"
         f"👤 {intern['name']}\n"
         f"💼 {intern['role']}\n"
         f"🎯 {intern['domain']}\n"
         f"🎨 {', '.join(intern['interests'])}\n\n"
+        f"😓 *Проблемы:* {problems_short}\n"
+        f"✨ *Желания:* {desires_short}\n\n"
         f"{exp.get('emoji','')} {exp.get('name','')}\n"
         f"{diff.get('emoji','')} {diff.get('name','')}\n"
         f"{style.get('emoji','')} {style.get('name','')}\n"
@@ -569,7 +798,7 @@ async def cmd_progress(message: Message):
         return
     
     done = len(intern['completed_topics'])
-    total = len(TOPICS)
+    total = get_total_topics()
     await message.answer(
         f"📊 *{intern['name']}*\n\n"
         f"✅ {done} из {total} тем\n"
@@ -590,16 +819,23 @@ async def cmd_profile(message: Message):
     style = LEARNING_STYLES.get(intern['learning_style'], {})
     duration = STUDY_DURATIONS.get(str(intern['study_duration']), {})
 
+    problems_short = intern['current_problems'][:100] + '...' if len(intern['current_problems']) > 100 else intern['current_problems']
+    desires_short = intern['desires'][:100] + '...' if len(intern['desires']) > 100 else intern['desires']
+
     await message.answer(
         f"👤 *{intern['name']}*\n"
         f"💼 {intern['role']}\n"
         f"🎯 {intern['domain']}\n"
         f"🎨 {', '.join(intern['interests'])}\n\n"
+        f"😓 *Проблемы:* {problems_short}\n"
+        f"✨ *Желания:* {desires_short}\n\n"
         f"{exp.get('emoji','')} {exp.get('name','')}\n"
         f"{diff.get('emoji','')} {diff.get('name','')}\n"
         f"{style.get('emoji','')} {style.get('name','')}\n"
         f"{duration.get('emoji','')} {duration.get('name','')} на тему\n\n"
-        f"⏰ Обучение в {intern['schedule_time']}",
+        f"🎯 {intern['goals']}\n"
+        f"⏰ Обучение в {intern['schedule_time']}\n\n"
+        f"/update — обновить профиль",
         parse_mode="Markdown"
     )
 
@@ -611,6 +847,7 @@ async def cmd_help(message: Message):
         "/learn — получить новую тему для изучения\n"
         "/progress — посмотреть свой прогресс\n"
         "/profile — посмотреть свой профиль\n"
+        "/update — обновить проблемы, желания, цели\n"
         "/help — показать эту справку\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "*Как работает обучение:*\n"
@@ -621,6 +858,93 @@ async def cmd_help(message: Message):
         "Материал буду отправлять в заданное время или по /learn",
         parse_mode="Markdown"
     )
+
+# --- Обновление профиля ---
+
+@router.message(Command("update"))
+async def cmd_update(message: Message, state: FSMContext):
+    intern = await get_intern(message.chat.id)
+    if not intern['onboarding_completed']:
+        await message.answer("Сначала пройди онбординг: /start")
+        return
+
+    await message.answer(
+        "Что хочешь обновить?\n\n"
+        "Это поможет мне лучше персонализировать материалы под тебя.",
+        reply_markup=kb_update_profile()
+    )
+    await state.set_state(UpdateStates.choosing_field)
+
+@router.callback_query(UpdateStates.choosing_field, F.data == "upd_problems")
+async def on_upd_problems(callback: CallbackQuery, state: FSMContext):
+    intern = await get_intern(callback.message.chat.id)
+    await callback.answer()
+    await callback.message.edit_text(
+        f"😓 *Текущие проблемы:*\n{intern['current_problems'] or 'не указаны'}\n\n"
+        "Опиши свои актуальные проблемы и сложности:",
+        parse_mode="Markdown"
+    )
+    await state.set_state(UpdateStates.updating_problems)
+
+@router.callback_query(UpdateStates.choosing_field, F.data == "upd_desires")
+async def on_upd_desires(callback: CallbackQuery, state: FSMContext):
+    intern = await get_intern(callback.message.chat.id)
+    await callback.answer()
+    await callback.message.edit_text(
+        f"✨ *Текущие желания:*\n{intern['desires'] or 'не указаны'}\n\n"
+        "Чего ты хочешь достичь? Какой результат был бы идеальным?",
+        parse_mode="Markdown"
+    )
+    await state.set_state(UpdateStates.updating_desires)
+
+@router.callback_query(UpdateStates.choosing_field, F.data == "upd_goals")
+async def on_upd_goals(callback: CallbackQuery, state: FSMContext):
+    intern = await get_intern(callback.message.chat.id)
+    await callback.answer()
+    await callback.message.edit_text(
+        f"🎯 *Текущие цели обучения:*\n{intern['goals'] or 'не указаны'}\n\n"
+        "Какие у тебя цели обучения?",
+        parse_mode="Markdown"
+    )
+    await state.set_state(UpdateStates.updating_goals)
+
+@router.callback_query(UpdateStates.choosing_field, F.data == "upd_cancel")
+async def on_upd_cancel(callback: CallbackQuery, state: FSMContext):
+    await callback.answer("Отменено")
+    await callback.message.edit_text("Хорошо! Можешь продолжить обучение: /learn")
+    await state.clear()
+
+@router.message(UpdateStates.updating_problems)
+async def on_save_problems(message: Message, state: FSMContext):
+    await update_intern(message.chat.id, current_problems=message.text.strip())
+    await message.answer(
+        "✅ Проблемы обновлены!\n\n"
+        "Теперь материалы будут ещё лучше персонализированы под твою ситуацию.\n\n"
+        "/learn — продолжить обучение\n"
+        "/update — обновить ещё что-то"
+    )
+    await state.clear()
+
+@router.message(UpdateStates.updating_desires)
+async def on_save_desires(message: Message, state: FSMContext):
+    await update_intern(message.chat.id, desires=message.text.strip())
+    await message.answer(
+        "✅ Желания обновлены!\n\n"
+        "Теперь материалы будут показывать, как достичь твоих целей.\n\n"
+        "/learn — продолжить обучение\n"
+        "/update — обновить ещё что-то"
+    )
+    await state.clear()
+
+@router.message(UpdateStates.updating_goals)
+async def on_save_goals(message: Message, state: FSMContext):
+    await update_intern(message.chat.id, goals=message.text.strip())
+    await message.answer(
+        "✅ Цели обучения обновлены!\n\n"
+        "/learn — продолжить обучение\n"
+        "/update — обновить ещё что-то"
+    )
+    await state.clear()
 
 @router.message(LearningStates.waiting_for_answer)
 async def on_answer(message: Message, state: FSMContext):
@@ -642,7 +966,7 @@ async def on_answer(message: Message, state: FSMContext):
     )
     
     done = len(completed)
-    total = len(TOPICS)
+    total = get_total_topics()
     
     await message.answer(
         f"✅ *Тема засчитана!*\n\n"
@@ -657,14 +981,15 @@ async def on_answer(message: Message, state: FSMContext):
 async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
     intern = await get_intern(chat_id)
     topic = get_topic(intern['current_topic_index'])
-    
+
     if not topic:
         await bot.send_message(chat_id, "🎉 Все темы пройдены!")
         return
-    
+
     await bot.send_message(chat_id, "⏳ Генерирую персональный материал...")
-    
-    content = await claude.generate_content(topic, intern)
+
+    # Генерируем контент с контекстом из MCP
+    content = await claude.generate_content(topic, intern, mcp_client=mcp)
     question = await claude.generate_question(topic, intern)
     
     header = (
@@ -728,6 +1053,7 @@ async def main():
         BotCommand(command="learn", description="Получить новую тему"),
         BotCommand(command="progress", description="Мой прогресс"),
         BotCommand(command="profile", description="Мой профиль"),
+        BotCommand(command="update", description="Обновить профиль"),
         BotCommand(command="help", description="Справка")
     ])
 
