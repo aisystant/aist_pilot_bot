@@ -601,6 +601,30 @@ def get_total_topics() -> int:
     """Получить общее количество тем"""
     return len(TOPICS)
 
+def get_sections_progress(completed_topics: list) -> list:
+    """Получить прогресс по разделам"""
+    sections = {}
+
+    # Собираем темы по разделам
+    for i, topic in enumerate(TOPICS):
+        section = topic['section']
+        if section not in sections:
+            sections[section] = {'total': 0, 'completed': 0, 'name': section}
+        sections[section]['total'] += 1
+        if i in completed_topics:
+            sections[section]['completed'] += 1
+
+    # Возвращаем в порядке появления
+    result = []
+    seen = set()
+    for topic in TOPICS:
+        section = topic['section']
+        if section not in seen:
+            seen.add(section)
+            result.append(sections[section])
+
+    return result
+
 # ============= КЛАВИАТУРЫ =============
 
 def kb_experience() -> InlineKeyboardMarkup:
@@ -664,6 +688,12 @@ def kb_bonus_question() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚀 Да, давай сложнее!", callback_data="bonus_yes")],
         [InlineKeyboardButton(text="✅ Достаточно", callback_data="bonus_no")]
+    ])
+
+def kb_skip_topic() -> InlineKeyboardMarkup:
+    """Клавиатура с кнопкой пропуска темы"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⏭ Пропустить тему", callback_data="skip_topic")]
     ])
 
 def progress_bar(completed: int, total: int) -> str:
@@ -865,14 +895,34 @@ async def cmd_progress(message: Message):
     if not intern['onboarding_completed']:
         await message.answer("Сначала /start")
         return
-    
+
     done = len(intern['completed_topics'])
     total = get_total_topics()
+    bloom = BLOOM_LEVELS.get(intern['bloom_level'], BLOOM_LEVELS[1])
+    sections = get_sections_progress(intern['completed_topics'])
+
+    # Формируем прогресс по разделам
+    sections_text = ""
+    section_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"]
+    for i, sec in enumerate(sections):
+        emoji = section_emojis[i] if i < len(section_emojis) else "📍"
+        pct = int((sec['completed'] / sec['total']) * 100) if sec['total'] > 0 else 0
+        bar = '█' * (pct // 10) + '░' * (10 - pct // 10)
+        status = " ✅" if sec['completed'] == sec['total'] else ""
+        # Сокращаем название раздела если длинное
+        name = sec['name'][:25] + "..." if len(sec['name']) > 28 else sec['name']
+        sections_text += f"{emoji} {name}\n    {bar} {sec['completed']}/{sec['total']}{status}\n"
+
     await message.answer(
-        f"📊 *{intern['name']}*\n\n"
+        f"📊 *Прогресс: {intern['name']}*\n\n"
+        f"━━━ *Общий прогресс* ━━━\n"
         f"✅ {done} из {total} тем\n"
         f"{progress_bar(done, total)}\n\n"
-        f"/learn — продолжить",
+        f"━━━ *По разделам* ━━━\n"
+        f"{sections_text}\n"
+        f"━━━ *Уровень вопросов* ━━━\n"
+        f"{bloom['emoji']} {bloom['name']} ({intern['topics_at_current_bloom']}/{BLOOM_AUTO_UPGRADE_AFTER} до повышения)\n\n"
+        f"/learn — продолжить обучение",
         parse_mode="Markdown"
     )
 
@@ -1158,6 +1208,28 @@ async def on_bonus_answer(message: Message, state: FSMContext):
     )
     await state.clear()
 
+@router.callback_query(LearningStates.waiting_for_answer, F.data == "skip_topic")
+async def on_skip_topic(callback: CallbackQuery, state: FSMContext):
+    """Пропуск темы без ответа"""
+    intern = await get_intern(callback.message.chat.id)
+
+    # Переходим к следующей теме без добавления в completed_topics
+    next_index = intern['current_topic_index'] + 1
+    await update_intern(callback.message.chat.id, current_topic_index=next_index)
+
+    topic = get_topic(intern['current_topic_index'])
+    topic_title = topic['title'] if topic else "тема"
+
+    await callback.answer("Тема пропущена")
+    await callback.message.edit_text(
+        f"⏭ *Тема пропущена:* {topic_title}\n\n"
+        f"_Пропущенные темы не засчитываются в прогресс._\n\n"
+        f"/learn — следующая тема\n"
+        f"/progress — посмотреть прогресс",
+        parse_mode="Markdown"
+    )
+    await state.clear()
+
 # --- Отправка темы ---
 
 async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
@@ -1223,8 +1295,11 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
         f"{'─'*25}\n\n"
         f"❓ *Вопрос* ({bloom['emoji']} {bloom['name']})\n\n"
         f"{question}\n\n"
-        f"⏱ 5 минут\nНапиши ответ 👇",
-        parse_mode="Markdown"
+        f"⏱ 5 минут\n\n"
+        f"_Напиши ответ — я пока не проверяю его автоматически, "
+        f"но записываю, что тема пройдена. Отменить нельзя._",
+        parse_mode="Markdown",
+        reply_markup=kb_skip_topic()
     )
 
     await state.set_state(LearningStates.waiting_for_answer)
