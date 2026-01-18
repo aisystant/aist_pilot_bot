@@ -15,7 +15,8 @@ from typing import Optional
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
     Message, CallbackQuery,
-    InlineKeyboardMarkup, InlineKeyboardButton
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    BotCommand
 )
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -67,6 +68,14 @@ EXPERIENCE_LEVELS = {
     "switching": {"emoji": "🔄", "name": "Меняю сферу", "desc": "Перехожу из другой области"}
 }
 
+STUDY_DURATIONS = {
+    "5": {"emoji": "⚡", "name": "5 минут", "words": 500, "desc": "Быстрый обзор"},
+    "10": {"emoji": "🕐", "name": "10 минут", "words": 1000, "desc": "Краткое изучение"},
+    "15": {"emoji": "🕑", "name": "15 минут", "words": 1500, "desc": "Стандартное изучение"},
+    "20": {"emoji": "🕒", "name": "20 минут", "words": 2000, "desc": "Углублённое изучение"},
+    "25": {"emoji": "🕓", "name": "25 минут", "words": 2500, "desc": "Полное погружение"}
+}
+
 # ============= СОСТОЯНИЯ FSM =============
 
 class OnboardingStates(StatesGroup):
@@ -77,6 +86,7 @@ class OnboardingStates(StatesGroup):
     waiting_for_experience = State()
     waiting_for_difficulty = State()
     waiting_for_learning_style = State()
+    waiting_for_study_duration = State()
     waiting_for_goals = State()
     waiting_for_schedule = State()
     confirming_profile = State()
@@ -104,6 +114,7 @@ async def init_db():
                 experience_level TEXT DEFAULT '',
                 difficulty_preference TEXT DEFAULT '',
                 learning_style TEXT DEFAULT '',
+                study_duration INTEGER DEFAULT 15,
                 goals TEXT DEFAULT '',
                 schedule_time TEXT DEFAULT '09:00',
                 current_topic_index INTEGER DEFAULT 0,
@@ -112,6 +123,11 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             )
+        ''')
+
+        # Миграция: добавляем поле study_duration если его нет
+        await conn.execute('''
+            ALTER TABLE interns ADD COLUMN IF NOT EXISTS study_duration INTEGER DEFAULT 15
         ''')
         
         await conn.execute('''
@@ -143,6 +159,7 @@ async def get_intern(chat_id: int) -> dict:
                 'experience_level': row['experience_level'],
                 'difficulty_preference': row['difficulty_preference'],
                 'learning_style': row['learning_style'],
+                'study_duration': row['study_duration'],
                 'goals': row['goals'],
                 'schedule_time': row['schedule_time'],
                 'current_topic_index': row['current_topic_index'],
@@ -164,6 +181,7 @@ async def get_intern(chat_id: int) -> dict:
                 'experience_level': '',
                 'difficulty_preference': '',
                 'learning_style': '',
+                'study_duration': 15,
                 'goals': '',
                 'schedule_time': '09:00',
                 'current_topic_index': 0,
@@ -205,9 +223,10 @@ def get_personalization_prompt(intern: dict) -> str:
     diff = DIFFICULTY_LEVELS.get(intern['difficulty_preference'], {})
     style = LEARNING_STYLES.get(intern['learning_style'], {})
     exp = EXPERIENCE_LEVELS.get(intern['experience_level'], {})
-    
+    duration = STUDY_DURATIONS.get(str(intern['study_duration']), {"words": 1500})
+
     interests = ', '.join(intern['interests']) if intern['interests'] else 'не указаны'
-    
+
     return f"""
 ПРОФИЛЬ СТАЖЕРА:
 - Имя: {intern['name']}
@@ -217,12 +236,14 @@ def get_personalization_prompt(intern: dict) -> str:
 - Уровень опыта: {exp.get('name', '')} ({exp.get('desc', '')})
 - Желаемая сложность: {diff.get('name', '')} ({diff.get('desc', '')})
 - Стиль обучения: {style.get('name', '')} ({style.get('desc', '')})
+- Время на изучение: {intern['study_duration']} минут (~{duration.get('words', 1500)} слов)
 - Цели: {intern['goals']}
 
 ИНСТРУКЦИИ:
 1. Используй примеры из области "{intern['domain']}" и интересов стажера
 2. Адаптируй сложность под уровень "{diff.get('name', 'средний')}"
 3. {'Начинай с теории' if intern['learning_style'] == 'theoretical' else 'Начинай с практических примеров' if intern['learning_style'] == 'practical' else 'Чередуй теорию и практику'}
+4. Объём текста должен быть рассчитан на {intern['study_duration']} минут чтения (~{duration.get('words', 1500)} слов)
 """
 
 # ============= CLAUDE API =============
@@ -261,10 +282,13 @@ class ClaudeClient:
                 return None
 
     async def generate_content(self, topic: dict, intern: dict) -> str:
+        duration = STUDY_DURATIONS.get(str(intern['study_duration']), {"words": 1500})
+        words = duration.get('words', 1500)
+
         system_prompt = f"""Ты — персональный наставник.
 {get_personalization_prompt(intern)}
 
-Создай текст на 20 минут чтения (~2000 слов). Без заголовков, только абзацы."""
+Создай текст на {intern['study_duration']} минут чтения (~{words} слов). Без заголовков, только абзацы."""
 
         user_prompt = f"""Тема: {topic.get('title')}
 Основное понятие: {topic.get('main_concept')}
@@ -336,6 +360,12 @@ def kb_learning_style() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"{v['emoji']} {v['name']}", callback_data=f"style_{k}")]
         for k, v in LEARNING_STYLES.items()
+    ])
+
+def kb_study_duration() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"{v['emoji']} {v['name']}", callback_data=f"duration_{k}")]
+        for k, v in STUDY_DURATIONS.items()
     ])
 
 def kb_confirm() -> InlineKeyboardMarkup:
@@ -428,6 +458,17 @@ async def on_style(callback: CallbackQuery, state: FSMContext):
     style = callback.data.replace("style_", "")
     await update_intern(callback.message.chat.id, learning_style=style)
     await callback.answer()
+    await callback.message.edit_text(
+        "Сколько времени готов уделять изучению одной темы?",
+        reply_markup=kb_study_duration()
+    )
+    await state.set_state(OnboardingStates.waiting_for_study_duration)
+
+@router.callback_query(OnboardingStates.waiting_for_study_duration, F.data.startswith("duration_"))
+async def on_duration(callback: CallbackQuery, state: FSMContext):
+    duration = int(callback.data.replace("duration_", ""))
+    await update_intern(callback.message.chat.id, study_duration=duration)
+    await callback.answer()
     await callback.message.edit_text("✅ Принято!")
     await callback.message.answer("Какие цели обучения? Чего хочешь достичь?")
     await state.set_state(OnboardingStates.waiting_for_goals)
@@ -447,14 +488,15 @@ async def on_schedule(message: Message, state: FSMContext):
     except:
         await message.answer("Формат: ЧЧ:ММ (например 09:00)")
         return
-    
+
     await update_intern(message.chat.id, schedule_time=message.text.strip())
     intern = await get_intern(message.chat.id)
-    
+
     exp = EXPERIENCE_LEVELS.get(intern['experience_level'], {})
     diff = DIFFICULTY_LEVELS.get(intern['difficulty_preference'], {})
     style = LEARNING_STYLES.get(intern['learning_style'], {})
-    
+    duration = STUDY_DURATIONS.get(str(intern['study_duration']), {})
+
     await message.answer(
         f"📋 *Твой профиль:*\n\n"
         f"👤 {intern['name']}\n"
@@ -463,7 +505,8 @@ async def on_schedule(message: Message, state: FSMContext):
         f"🎨 {', '.join(intern['interests'])}\n\n"
         f"{exp.get('emoji','')} {exp.get('name','')}\n"
         f"{diff.get('emoji','')} {diff.get('name','')}\n"
-        f"{style.get('emoji','')} {style.get('name','')}\n\n"
+        f"{style.get('emoji','')} {style.get('name','')}\n"
+        f"{duration.get('emoji','')} {duration.get('name','')} на тему\n\n"
         f"🎯 {intern['goals']}\n"
         f"⏰ {intern['schedule_time']}\n\n"
         f"Всё верно?",
@@ -476,12 +519,12 @@ async def on_schedule(message: Message, state: FSMContext):
 async def on_confirm(callback: CallbackQuery, state: FSMContext):
     await update_intern(callback.message.chat.id, onboarding_completed=True)
     intern = await get_intern(callback.message.chat.id)
-    
+
     await callback.answer("Сохранено!")
     await callback.message.edit_text(
         f"✅ *Готово!*\n\n"
         f"Буду отправлять материал в *{intern['schedule_time']}*\n\n"
-        f"• 20 мин — изучение\n"
+        f"• {intern['study_duration']} мин — изучение темы\n"
         f"• 5 мин — ответ на вопрос\n"
         f"• Ответил = тема засчитана ✅\n\n"
         f"Начнём?",
@@ -541,11 +584,12 @@ async def cmd_profile(message: Message):
     if not intern['onboarding_completed']:
         await message.answer("Сначала /start")
         return
-    
+
     exp = EXPERIENCE_LEVELS.get(intern['experience_level'], {})
     diff = DIFFICULTY_LEVELS.get(intern['difficulty_preference'], {})
     style = LEARNING_STYLES.get(intern['learning_style'], {})
-    
+    duration = STUDY_DURATIONS.get(str(intern['study_duration']), {})
+
     await message.answer(
         f"👤 *{intern['name']}*\n"
         f"💼 {intern['role']}\n"
@@ -553,8 +597,28 @@ async def cmd_profile(message: Message):
         f"🎨 {', '.join(intern['interests'])}\n\n"
         f"{exp.get('emoji','')} {exp.get('name','')}\n"
         f"{diff.get('emoji','')} {diff.get('name','')}\n"
-        f"{style.get('emoji','')} {style.get('name','')}\n\n"
+        f"{style.get('emoji','')} {style.get('name','')}\n"
+        f"{duration.get('emoji','')} {duration.get('name','')} на тему\n\n"
         f"⏰ Обучение в {intern['schedule_time']}",
+        parse_mode="Markdown"
+    )
+
+@router.message(Command("help"))
+async def cmd_help(message: Message):
+    await message.answer(
+        "📖 *Доступные команды:*\n\n"
+        "/start — начать или перезапустить онбординг\n"
+        "/learn — получить новую тему для изучения\n"
+        "/progress — посмотреть свой прогресс\n"
+        "/profile — посмотреть свой профиль\n"
+        "/help — показать эту справку\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "*Как работает обучение:*\n"
+        "1. Я отправляю персонализированный материал\n"
+        "2. Ты изучаешь его (5-25 мин)\n"
+        "3. Отвечаешь на вопрос для закрепления\n"
+        "4. Тема засчитывается в прогресс\n\n"
+        "Материал буду отправлять в заданное время или по /learn",
         parse_mode="Markdown"
     )
 
@@ -606,7 +670,7 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
     header = (
         f"📚 *{topic['section']}* → {topic['subsection']}\n\n"
         f"*{topic['title']}*\n"
-        f"⏱ 20 минут\n{'─'*25}\n\n"
+        f"⏱ {intern['study_duration']} минут\n{'─'*25}\n\n"
     )
     
     full = header + content
@@ -653,15 +717,24 @@ async def scheduled_check():
 async def main():
     # Инициализация БД
     await init_db()
-    
+
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
-    
+
+    # Установка команд бота (Menu-кнопка)
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Начать обучение"),
+        BotCommand(command="learn", description="Получить новую тему"),
+        BotCommand(command="progress", description="Мой прогресс"),
+        BotCommand(command="profile", description="Мой профиль"),
+        BotCommand(command="help", description="Справка")
+    ])
+
     # Запуск планировщика
     scheduler.add_job(scheduled_check, 'cron', minute='*')
     scheduler.start()
-    
+
     logger.info("🚀 Бот запущен с PostgreSQL!")
     await dp.start_polling(bot)
 
