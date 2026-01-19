@@ -1020,7 +1020,9 @@ async def on_schedule(message: Message, state: FSMContext):
         await message.answer("Формат: ЧЧ:ММ (например 09:00)")
         return
 
-    await update_intern(message.chat.id, schedule_time=message.text.strip())
+    # Нормализуем формат времени (с ведущими нулями)
+    normalized_time = f"{h:02d}:{m:02d}"
+    await update_intern(message.chat.id, schedule_time=normalized_time)
 
     await message.answer(
         "🗓 *Когда начнём марафон?*\n\n"
@@ -1536,9 +1538,11 @@ async def on_save_schedule(message: Message, state: FSMContext):
         await message.answer("Формат: ЧЧ:ММ (например 09:00)")
         return
 
-    await update_intern(message.chat.id, schedule_time=message.text.strip())
+    # Нормализуем формат времени (с ведущими нулями)
+    normalized_time = f"{h:02d}:{m:02d}"
+    await update_intern(message.chat.id, schedule_time=normalized_time)
     await message.answer(
-        f"✅ Время напоминания изменено на *{message.text.strip()}*!\n\n"
+        f"✅ Время напоминания изменено на *{normalized_time}*!\n\n"
         "/learn — продолжить обучение\n"
         "/update — обновить ещё что-то",
         parse_mode="Markdown"
@@ -1996,11 +2000,13 @@ async def send_scheduled_topic(chat_id: int, bot: Bot):
 
     # Проверяем, начался ли марафон
     if marathon_day == 0:
+        logger.info(f"[Scheduler] {chat_id}: marathon_day=0, пропуск (марафон не начался)")
         return  # Марафон ещё не начался
 
     # Проверяем дневной лимит
     topics_today = get_topics_today(intern)
     if topics_today >= MAX_TOPICS_PER_DAY:
+        logger.info(f"[Scheduler] {chat_id}: topics_today={topics_today}, пропуск (лимит)")
         return  # Лимит достигнут
 
     # Получаем следующую тему
@@ -2132,6 +2138,11 @@ async def scheduled_check():
     """Проверка расписания каждую минуту"""
     now = moscow_now()
     time_str = f"{now.hour:02d}:{now.minute:02d}"
+
+    # Логируем каждые 10 минут для подтверждения работы scheduler
+    if now.minute % 10 == 0:
+        logger.info(f"[Scheduler] Проверка в {time_str} MSK")
+
     chat_ids = await get_all_scheduled_interns(now.hour, now.minute)
 
     if chat_ids:
