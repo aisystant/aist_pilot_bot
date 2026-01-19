@@ -2062,10 +2062,12 @@ async def schedule_reminders(chat_id: int, intern: dict):
         # Планируем напоминания +1ч и +3ч
         for hours in [1, 3]:
             reminder_time = now + timedelta(hours=hours)
+            # Убираем timezone для совместимости с TIMESTAMP (без timezone)
+            reminder_time_naive = reminder_time.replace(tzinfo=None)
             await conn.execute(
                 '''INSERT INTO reminders (chat_id, reminder_type, scheduled_for)
                    VALUES ($1, $2, $3)''',
-                chat_id, f'+{hours}h', reminder_time
+                chat_id, f'+{hours}h', reminder_time_naive
             )
 
 
@@ -2106,13 +2108,15 @@ async def send_reminder(chat_id: int, reminder_type: str, bot: Bot):
 async def check_reminders():
     """Проверяет и отправляет запланированные напоминания"""
     now = moscow_now()
+    # Убираем timezone для совместимости с TIMESTAMP (без timezone)
+    now_naive = now.replace(tzinfo=None)
 
     async with db_pool.acquire() as conn:
         # Получаем напоминания, которые пора отправить
         rows = await conn.fetch(
             '''SELECT id, chat_id, reminder_type FROM reminders
                WHERE sent = FALSE AND scheduled_for <= $1''',
-            now
+            now_naive
         )
 
         if not rows:
