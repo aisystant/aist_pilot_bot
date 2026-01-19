@@ -13,7 +13,7 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, List
 
@@ -54,6 +54,17 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Московское время (UTC+3)
+MOSCOW_TZ = timezone(timedelta(hours=3))
+
+def moscow_now() -> datetime:
+    """Получить текущее время по Москве"""
+    return datetime.now(MOSCOW_TZ)
+
+def moscow_today():
+    """Получить текущую дату по Москве"""
+    return moscow_now().date()
 
 # ============= КОНСТАНТЫ =============
 
@@ -116,25 +127,6 @@ BLOOM_LEVELS = {
 # Автоматическое повышение уровня: после N тем на текущем уровне
 BLOOM_AUTO_UPGRADE_AFTER = 7  # после 7 тем уровень повышается
 
-# Варианты порядка тем
-TOPIC_ORDERS = {
-    "default": {
-        "emoji": "📋",
-        "name": "По умолчанию",
-        "desc": "Последовательный порядок тем"
-    },
-    "by_interests": {
-        "emoji": "🎯",
-        "name": "По интересам",
-        "desc": "Темы, близкие к твоим интересам, идут первыми"
-    },
-    "hybrid": {
-        "emoji": "⚖️",
-        "name": "Гибридный",
-        "desc": "Разделы по порядку, но внутри — по интересам"
-    }
-}
-
 # Лимит тем в день (для развития систематичности)
 DAILY_TOPICS_LIMIT = 2
 MAX_TOPICS_PER_DAY = 4  # макс тем в день (нагнать 1 день)
@@ -169,7 +161,7 @@ class UpdateStates(StatesGroup):
     updating_duration = State()
     updating_schedule = State()
     updating_bloom_level = State()
-    updating_topic_order = State()
+    updating_marathon_start = State()
 
 # ============= БАЗА ДАННЫХ =============
 
@@ -352,7 +344,7 @@ async def get_all_scheduled_interns(hour: int, minute: int) -> list:
 
 def get_topics_today(intern: dict) -> int:
     """Получить количество тем, пройденных сегодня"""
-    today = datetime.now().date()
+    today = moscow_today()
     last_date = intern.get('last_topic_date')
 
     # Если last_topic_date — это дата сегодня, возвращаем topics_today
@@ -721,7 +713,7 @@ def get_marathon_day(intern: dict) -> int:
     if not start_date:
         return 0
 
-    today = datetime.now().date()
+    today = moscow_today()
     if isinstance(start_date, datetime):
         start_date = start_date.date()
 
@@ -883,7 +875,7 @@ def kb_update_profile() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="⏱ Время на тему", callback_data="upd_duration"),
          InlineKeyboardButton(text="⏰ Расписание", callback_data="upd_schedule")],
         [InlineKeyboardButton(text="🎚 Уровень сложности", callback_data="upd_bloom")],
-        [InlineKeyboardButton(text="🔀 Порядок тем", callback_data="upd_topic_order")],
+        [InlineKeyboardButton(text="🗓 Дата старта", callback_data="upd_marathon_start")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="upd_cancel")]
     ])
 
@@ -904,16 +896,6 @@ def kb_bonus_question() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✅ Достаточно", callback_data="bonus_no")]
     ])
 
-def kb_topic_order() -> InlineKeyboardMarkup:
-    """Клавиатура для выбора порядка тем"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=f"{v['emoji']} {v['name']}",
-            callback_data=f"order_{k}"
-        )]
-        for k, v in TOPIC_ORDERS.items()
-    ])
-
 def kb_skip_topic() -> InlineKeyboardMarkup:
     """Клавиатура с кнопкой пропуска темы"""
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -922,7 +904,7 @@ def kb_skip_topic() -> InlineKeyboardMarkup:
 
 def kb_marathon_start() -> InlineKeyboardMarkup:
     """Клавиатура для выбора даты старта марафона"""
-    today = datetime.now().date()
+    today = moscow_today()
     tomorrow = today + timedelta(days=1)
     day_after = today + timedelta(days=2)
 
@@ -1060,7 +1042,7 @@ async def on_schedule(message: Message, state: FSMContext):
 
 @router.callback_query(OnboardingStates.waiting_for_start_date, F.data.startswith("start_"))
 async def on_start_date(callback: CallbackQuery, state: FSMContext):
-    today = datetime.now().date()
+    today = moscow_today()
 
     if callback.data == "start_today":
         start_date = today
@@ -1106,7 +1088,7 @@ async def on_confirm(callback: CallbackQuery, state: FSMContext):
 
     # Определяем, когда старт
     if start_date:
-        today = datetime.now().date()
+        today = moscow_today()
         if isinstance(start_date, datetime):
             start_date = start_date.date()
         if start_date > today:
@@ -1280,7 +1262,17 @@ async def cmd_update(message: Message, state: FSMContext):
 
     duration = STUDY_DURATIONS.get(str(intern['study_duration']), {})
     bloom = BLOOM_LEVELS.get(intern['bloom_level'], BLOOM_LEVELS[1])
-    topic_order = TOPIC_ORDERS.get(intern.get('topic_order', 'default'), TOPIC_ORDERS['default'])
+
+    # Получаем дату старта марафона
+    start_date = intern.get('marathon_start_date')
+    if start_date:
+        if isinstance(start_date, datetime):
+            start_date = start_date.date()
+        marathon_start_str = start_date.strftime('%d.%m.%Y')
+    else:
+        marathon_start_str = "не задана"
+
+    marathon_day = get_marathon_day(intern)
 
     interests_str = ', '.join(intern['interests']) if intern['interests'] else 'не указаны'
     motivation_short = intern.get('motivation', '')[:80] + '...' if len(intern.get('motivation', '')) > 80 else intern.get('motivation', '') or 'не указано'
@@ -1294,7 +1286,7 @@ async def cmd_update(message: Message, state: FSMContext):
         f"🎯 *Изменить:* {goals_short}\n\n"
         f"{duration.get('emoji', '')} {duration.get('name', '')} на тему\n"
         f"{bloom['emoji']} Уровень: {bloom['short_name']}\n"
-        f"{topic_order['emoji']} Порядок: {topic_order['name']}\n"
+        f"🗓 Старт марафона: {marathon_start_str} (день {marathon_day})\n"
         f"⏰ Напоминание в {intern['schedule_time']}\n\n"
         f"*Что хочешь обновить?*",
         parse_mode="Markdown",
@@ -1415,34 +1407,50 @@ async def on_save_bloom(callback: CallbackQuery, state: FSMContext):
     )
     await state.clear()
 
-@router.callback_query(UpdateStates.choosing_field, F.data == "upd_topic_order")
-async def on_upd_topic_order(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(UpdateStates.choosing_field, F.data == "upd_marathon_start")
+async def on_upd_marathon_start(callback: CallbackQuery, state: FSMContext):
     intern = await get_intern(callback.message.chat.id)
-    current_order = TOPIC_ORDERS.get(intern.get('topic_order', 'default'), TOPIC_ORDERS['default'])
+    start_date = intern.get('marathon_start_date')
+    marathon_day = get_marathon_day(intern)
+
+    if start_date:
+        if isinstance(start_date, datetime):
+            start_date = start_date.date()
+        current_date_str = start_date.strftime('%d.%m.%Y')
+    else:
+        current_date_str = "не задана"
+
     await callback.answer()
     await callback.message.edit_text(
-        f"🔀 *Текущий порядок:* {current_order['emoji']} {current_order['name']}\n"
-        f"_{current_order['desc']}_\n\n"
-        f"*Доступные варианты:*\n\n"
-        f"📋 *По умолчанию* — темы идут последовательно, как в курсе\n\n"
-        f"🎯 *По интересам* — темы, близкие к твоим интересам и хобби, показываются раньше\n\n"
-        f"⚖️ *Гибридный* — разделы идут по порядку, но внутри каждого раздела темы сортируются по интересам\n\n"
-        f"Выбери порядок:",
+        f"🗓 *Текущая дата старта:* {current_date_str}\n"
+        f"*День марафона:* {marathon_day} из {MARATHON_DAYS}\n\n"
+        f"⚠️ *Внимание:* изменение даты старта влияет на расчёт текущего дня марафона.\n\n"
+        f"Выбери новую дату старта:",
         parse_mode="Markdown",
-        reply_markup=kb_topic_order()
+        reply_markup=kb_marathon_start()
     )
-    await state.set_state(UpdateStates.updating_topic_order)
+    await state.set_state(UpdateStates.updating_marathon_start)
 
-@router.callback_query(UpdateStates.updating_topic_order, F.data.startswith("order_"))
-async def on_save_topic_order(callback: CallbackQuery, state: FSMContext):
-    order_key = callback.data.replace("order_", "")
-    await update_intern(callback.message.chat.id, topic_order=order_key)
+@router.callback_query(UpdateStates.updating_marathon_start, F.data.startswith("start_"))
+async def on_save_marathon_start(callback: CallbackQuery, state: FSMContext):
+    today = moscow_today()
 
-    order = TOPIC_ORDERS.get(order_key, TOPIC_ORDERS['default'])
-    await callback.answer(f"Порядок: {order['name']}")
+    if callback.data == "start_today":
+        start_date = today
+        date_text = "сегодня"
+    elif callback.data == "start_tomorrow":
+        start_date = today + timedelta(days=1)
+        date_text = "завтра"
+    else:  # start_day_after
+        start_date = today + timedelta(days=2)
+        date_text = "послезавтра"
+
+    await update_intern(callback.message.chat.id, marathon_start_date=start_date)
+
+    await callback.answer("Дата старта обновлена!")
     await callback.message.edit_text(
-        f"✅ Порядок тем изменён на *{order['name']}*!\n\n"
-        f"{order['desc']}\n\n"
+        f"✅ Дата старта марафона изменена!\n\n"
+        f"Новая дата: *{start_date.strftime('%d.%m.%Y')}* ({date_text})\n\n"
         f"/learn — продолжить обучение\n"
         f"/update — обновить ещё что-то",
         parse_mode="Markdown"
@@ -1568,7 +1576,7 @@ async def on_answer(message: Message, state: FSMContext):
         level_upgraded = True
 
     # Обновляем счётчик тем за сегодня
-    today = datetime.now().date()
+    today = moscow_today()
     topics_today = get_topics_today(intern) + 1
 
     await update_intern(
@@ -1718,7 +1726,7 @@ async def on_work_product(message: Message, state: FSMContext):
     completed = intern['completed_topics'] + [intern['current_topic_index']]
 
     # Обновляем счётчик тем за сегодня
-    today = datetime.now().date()
+    today = moscow_today()
     topics_today = get_topics_today(intern) + 1
 
     await update_intern(
@@ -1788,25 +1796,34 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
     intern = await get_intern(chat_id)
     marathon_day = get_marathon_day(intern)
 
-    # Проверяем, начался ли марафон
+    # Автоматический запуск марафона при первом /learn
     if marathon_day == 0:
         start_date = intern.get('marathon_start_date')
         if start_date:
+            # Дата старта в будущем
             await bot.send_message(
                 chat_id,
                 f"🗓 Марафон ещё не начался.\n\n"
                 f"Старт: *{start_date.strftime('%d.%m.%Y')}*\n\n"
-                f"Жду тебя в день старта!",
+                f"Если хочешь изменить дату — /update",
                 parse_mode="Markdown"
             )
+            return
         else:
+            # Автоматически запускаем марафон сегодня
+            today = moscow_today()
+            await update_intern(chat_id, marathon_start_date=today)
             await bot.send_message(
                 chat_id,
-                "🗓 Дата старта марафона не задана.\n\n"
-                "Используй /update чтобы задать дату.",
+                f"🚀 *Марафон запущен!*\n\n"
+                f"Старт: *{today.strftime('%d.%m.%Y')}* (сегодня)\n\n"
+                f"Если хочешь изменить дату старта — /update\n\n"
+                f"А сейчас — твоя первая тема! 👇",
                 parse_mode="Markdown"
             )
-        return
+            # Обновляем данные
+            intern = await get_intern(chat_id)
+            marathon_day = get_marathon_day(intern)
 
     # Проверяем дневной лимит
     topics_today = get_topics_today(intern)
@@ -2033,7 +2050,7 @@ async def send_scheduled_topic(chat_id: int, bot: Bot):
 
 async def schedule_reminders(chat_id: int, intern: dict):
     """Планирует напоминания для пользователя"""
-    now = datetime.now()
+    now = moscow_now()
 
     # Добавляем записи о напоминаниях в БД
     async with db_pool.acquire() as conn:
@@ -2089,7 +2106,7 @@ async def send_reminder(chat_id: int, reminder_type: str, bot: Bot):
 
 async def check_reminders():
     """Проверяет и отправляет запланированные напоминания"""
-    now = datetime.now()
+    now = moscow_now()
 
     async with db_pool.acquire() as conn:
         # Получаем напоминания, которые пора отправить
@@ -2120,7 +2137,7 @@ async def check_reminders():
 
 async def scheduled_check():
     """Проверка расписания каждую минуту"""
-    now = datetime.now()
+    now = moscow_now()
     chat_ids = await get_all_scheduled_interns(now.hour, now.minute)
 
     if chat_ids:
