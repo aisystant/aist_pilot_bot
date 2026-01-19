@@ -41,6 +41,7 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 MCP_URL = os.getenv("MCP_URL", "https://guides-mcp.aisystant.workers.dev/mcp")
+KNOWLEDGE_MCP_URL = os.getenv("KNOWLEDGE_MCP_URL", "https://knowledge-mcp.aisystant.workers.dev/mcp")
 
 if not BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не установлен!")
@@ -412,18 +413,25 @@ class ClaudeClient:
                 logger.error(f"Claude API exception: {e}")
                 return None
 
-    async def generate_content(self, topic: dict, intern: dict, mcp_client=None) -> str:
-        """Генерирует контент для теоретической темы марафона"""
+    async def generate_content(self, topic: dict, intern: dict, mcp_client=None, knowledge_client=None) -> str:
+        """Генерирует контент для теоретической темы марафона
+
+        Args:
+            topic: тема для генерации
+            intern: профиль стажера
+            mcp_client: клиент MCP для руководств (guides)
+            knowledge_client: клиент MCP для базы знаний (knowledge) - приоритет свежим постам
+        """
         duration = STUDY_DURATIONS.get(str(intern['study_duration']), {"words": 1500})
         words = duration.get('words', 1500)
 
-        # Получаем контекст из MCP (semantic search по теме)
-        mcp_context = ""
+        search_query = f"{topic.get('title')} {topic.get('main_concept')}"
+
+        # Получаем контекст из MCP руководств
+        guides_context = ""
         if mcp_client:
             try:
-                search_query = f"{topic.get('title')} {topic.get('main_concept')}"
                 search_results = await mcp_client.semantic_search(search_query, lang="ru", limit=3)
-
                 if search_results:
                     context_parts = []
                     for item in search_results[:3]:
@@ -433,22 +441,66 @@ class ClaudeClient:
                                 context_parts.append(text[:1500])
                         elif isinstance(item, str):
                             context_parts.append(item[:1500])
-
                     if context_parts:
-                        mcp_context = "\n\n".join(context_parts)
-                        logger.info(f"MCP: найдено {len(context_parts)} фрагментов контекста")
+                        guides_context = "\n\n".join(context_parts)
+                        logger.info(f"{mcp_client.name}: найдено {len(context_parts)} фрагментов контекста")
             except Exception as e:
-                logger.error(f"MCP search error: {e}")
+                logger.error(f"{mcp_client.name} search error: {e}")
+
+        # Получаем контекст из MCP базы знаний (приоритет свежим постам)
+        knowledge_context = ""
+        if knowledge_client:
+            try:
+                # Сортируем по дате создания (сначала новые)
+                search_results = await knowledge_client.semantic_search(
+                    search_query, lang="ru", limit=3, sort_by="created_at:desc"
+                )
+                if search_results:
+                    context_parts = []
+                    for item in search_results[:3]:
+                        if isinstance(item, dict):
+                            text = item.get('text', item.get('content', ''))
+                            date_info = item.get('created_at', item.get('date', ''))
+                            if text:
+                                # Добавляем информацию о дате, если есть
+                                if date_info:
+                                    context_parts.append(f"[{date_info}] {text[:1500]}")
+                                else:
+                                    context_parts.append(text[:1500])
+                        elif isinstance(item, str):
+                            context_parts.append(item[:1500])
+                    if context_parts:
+                        knowledge_context = "\n\n".join(context_parts)
+                        logger.info(f"{knowledge_client.name}: найдено {len(context_parts)} фрагментов (свежие посты)")
+            except Exception as e:
+                logger.error(f"{knowledge_client.name} search error: {e}")
+
+        # Объединяем контексты (knowledge имеет приоритет, поэтому идёт первым)
+        mcp_context = ""
+        if knowledge_context and guides_context:
+            mcp_context = f"АКТУАЛЬНЫЕ ПОСТЫ:\n{knowledge_context}\n\n---\n\nИЗ РУКОВОДСТВ:\n{guides_context}"
+        elif knowledge_context:
+            mcp_context = knowledge_context
+        elif guides_context:
+            mcp_context = guides_context
 
         # Используем content_prompt из структуры знаний, если есть
         content_prompt = topic.get('content_prompt', '')
+
+        # Определяем тип контекста для промпта
+        has_both = knowledge_context and guides_context
+        context_instruction = ""
+        if has_both:
+            context_instruction = "Используй предоставленный контекст: актуальные посты имеют приоритет, руководства дополняют."
+        elif mcp_context:
+            context_instruction = "Используй предоставленный контекст из материалов Aisystant как основу."
 
         system_prompt = f"""Ты — персональный наставник по системному мышлению и личному развитию.
 {get_personalization_prompt(intern)}
 
 Создай текст на {intern['study_duration']} минут чтения (~{words} слов). Без заголовков, только абзацы.
 Текст должен быть вовлекающим, с примерами из жизни читателя.
-{"Используй предоставленный контекст из руководств Aisystant как основу для материала." if mcp_context else ""}"""
+{context_instruction}"""
 
         pain_point = topic.get('pain_point', '')
         key_insight = topic.get('key_insight', '')
@@ -464,10 +516,10 @@ class ClaudeClient:
 
 {f"ИНСТРУКЦИЯ ПО КОНТЕНТУ:{chr(10)}{content_prompt}" if content_prompt else ""}
 
-{f"КОНТЕКСТ ИЗ РУКОВОДСТВ AISYSTANT:{chr(10)}{mcp_context}" if mcp_context else ""}
+{f"КОНТЕКСТ ИЗ МАТЕРИАЛОВ AISYSTANT:{chr(10)}{mcp_context}" if mcp_context else ""}
 
 Начни с признания боли читателя, затем раскрой тему и подведи к ключевому инсайту.
-{"Опирайся на контекст из руководств, но адаптируй под профиль стажера." if mcp_context else ""}"""
+{"Опирайся на контекст, но адаптируй под профиль стажера. Актуальные посты важнее." if mcp_context else ""}"""
 
         result = await self.generate(system_prompt, user_prompt)
         return result or "Не удалось сгенерировать контент. Попробуйте /learn ещё раз."
@@ -522,10 +574,11 @@ claude = ClaudeClient()
 # ============= MCP CLIENT =============
 
 class MCPClient:
-    """Клиент для работы с MCP сервером руководств Aisystant"""
+    """Универсальный клиент для работы с MCP серверами Aisystant"""
 
-    def __init__(self):
-        self.base_url = MCP_URL
+    def __init__(self, url: str, name: str = "MCP"):
+        self.base_url = url
+        self.name = name
         self._request_id = 0
 
     def _next_id(self) -> int:
@@ -557,17 +610,17 @@ class MCPClient:
                         if "result" in data:
                             return data["result"]
                         if "error" in data:
-                            logger.error(f"MCP error: {data['error']}")
+                            logger.error(f"{self.name} error: {data['error']}")
                             return None
                     else:
                         error = await resp.text()
-                        logger.error(f"MCP HTTP error {resp.status}: {error}")
+                        logger.error(f"{self.name} HTTP error {resp.status}: {error}")
                         return None
         except asyncio.TimeoutError:
-            logger.error("MCP request timeout")
+            logger.error(f"{self.name} request timeout")
             return None
         except Exception as e:
-            logger.error(f"MCP exception: {e}")
+            logger.error(f"{self.name} exception: {e}")
             return None
 
     async def get_guides_list(self, lang: str = "ru", category: str = None) -> List[dict]:
@@ -615,24 +668,44 @@ class MCPClient:
                     return item.get("text", "")
         return ""
 
-    async def semantic_search(self, query: str, lang: str = "ru", limit: int = 5) -> List[dict]:
-        """Семантический поиск по руководствам"""
-        result = await self._call("semantic_search", {
+    async def semantic_search(self, query: str, lang: str = "ru", limit: int = 5, sort_by: str = None) -> List[dict]:
+        """Семантический поиск по руководствам
+
+        Args:
+            query: поисковый запрос
+            lang: язык (ru/en)
+            limit: максимальное количество результатов
+            sort_by: сортировка (например, "created_at:desc" для свежих постов)
+        """
+        args = {
             "query": query,
             "lang": lang,
             "limit": limit
-        })
+        }
+        if sort_by:
+            args["sort"] = sort_by
+
+        result = await self._call("semantic_search", args)
         if result and "content" in result:
             for item in result.get("content", []):
                 if item.get("type") == "text":
                     try:
-                        return json.loads(item.get("text", "[]"))
+                        data = json.loads(item.get("text", "[]"))
+                        # Если sort_by указан и данные содержат дату, сортируем на клиенте
+                        if sort_by and "desc" in sort_by and isinstance(data, list):
+                            data.sort(key=lambda x: x.get('created_at', x.get('date', '')), reverse=True)
+                        return data
                     except json.JSONDecodeError:
                         # Если не JSON, возвращаем как текст
                         return [{"text": item.get("text", "")}]
         return []
 
-mcp = MCPClient()
+# Создаём клиенты для двух MCP серверов
+mcp_guides = MCPClient(MCP_URL, "MCP-Guides")
+mcp_knowledge = MCPClient(KNOWLEDGE_MCP_URL, "MCP-Knowledge")
+
+# Для обратной совместимости
+mcp = mcp_guides
 
 # ============= СТРУКТУРА ЗНАНИЙ =============
 
@@ -1221,6 +1294,7 @@ async def cmd_profile(message: Message):
         f"{duration.get('emoji', '')} {duration.get('name', '')} на тему\n"
         f"{bloom['emoji']} Уровень: {bloom['short_name']} «{bloom['name']}»\n"
         f"⏰ Напоминание в {intern['schedule_time']}\n\n"
+        f"🆔 `{message.chat.id}`\n\n"
         f"/update — обновить профиль",
         parse_mode="Markdown"
     )
@@ -1931,7 +2005,7 @@ async def send_theory_topic(chat_id: int, topic: dict, intern: dict, state: FSMC
 
     await bot.send_message(chat_id, "⏳ Генерирую персональный материал...")
 
-    content = await claude.generate_content(topic, intern, mcp_client=mcp)
+    content = await claude.generate_content(topic, intern, mcp_client=mcp_guides, knowledge_client=mcp_knowledge)
     question = await claude.generate_question(topic, intern)
 
     header = (
