@@ -1032,14 +1032,14 @@ async def cmd_start(message: Message, state: FSMContext):
             f"👋 С возвращением, {intern['name']}!\n\n"
             f"/learn — продолжить обучение\n"
             f"/progress — статистика\n"
-            f"/profile — твой профиль"
+            f"/profile — ваш профиль"
         )
         return
-    
+
     await message.answer(
-        "👋 Привет! Я помощник для персонального обучения.\n\n"
-        "Задам несколько вопросов, чтобы адаптировать материал под тебя (~2 мин).\n\n"
-        "Как тебя зовут?"
+        "👋 Здравствуйте! Я помощник для персонального обучения.\n\n"
+        "Задам несколько вопросов, чтобы адаптировать материал под вас (~2 мин).\n\n"
+        "Как вас зовут?"
     )
     await state.set_state(OnboardingStates.waiting_for_name)
 
@@ -1048,7 +1048,7 @@ async def on_name(message: Message, state: FSMContext):
     await update_intern(message.chat.id, name=message.text.strip())
     await message.answer(
         f"Приятно познакомиться, {message.text.strip()}!\n\n"
-        "Чем ты занимаешься?\n\n"
+        "Чем вы занимаетесь?\n\n"
         "_Например: разработчик в IT-компании, студент экономфака, маркетолог в стартапе_",
         parse_mode="Markdown"
     )
@@ -1058,8 +1058,9 @@ async def on_name(message: Message, state: FSMContext):
 async def on_occupation(message: Message, state: FSMContext):
     await update_intern(message.chat.id, occupation=message.text.strip())
     await message.answer(
-        "Расскажи о своих интересах и хобби.\n\n"
-        "_Это поможет приводить близкие тебе примеры._",
+        "Расскажите о своих интересах и хобби.\n\n"
+        "_Например: технологии, космос, кулинария, спорт, музыка, путешествия_\n\n"
+        "_Это поможет приводить близкие вам примеры._",
         parse_mode="Markdown"
     )
     await state.set_state(OnboardingStates.waiting_for_interests)
@@ -1069,8 +1070,8 @@ async def on_interests(message: Message, state: FSMContext):
     interests = [i.strip() for i in message.text.replace(',', ';').split(';') if i.strip()]
     await update_intern(message.chat.id, interests=interests)
     await message.answer(
-        "*Что для тебя по-настоящему важно в жизни?*\n\n"
-        "_Это поможет мне добавлять мотивационные блоки, которые тебя зацепят._",
+        "*Что для вас по-настоящему важно в жизни?*\n\n"
+        "_Это поможет мне добавлять мотивационные блоки, которые вас зацепят._",
         parse_mode="Markdown"
     )
     await state.set_state(OnboardingStates.waiting_for_motivation)
@@ -1079,8 +1080,8 @@ async def on_interests(message: Message, state: FSMContext):
 async def on_motivation(message: Message, state: FSMContext):
     await update_intern(message.chat.id, motivation=message.text.strip())
     await message.answer(
-        "*Что хочешь изменить* в своей жизни или работе?\n\n"
-        "_Это определит, как я буду персонализировать материалы под тебя._",
+        "*Что хотите изменить* в своей жизни или работе?\n\n"
+        "_Это определит, как я буду персонализировать материалы под вас._",
         parse_mode="Markdown"
     )
     await state.set_state(OnboardingStates.waiting_for_goals)
@@ -1089,7 +1090,7 @@ async def on_motivation(message: Message, state: FSMContext):
 async def on_goals(message: Message, state: FSMContext):
     await update_intern(message.chat.id, goals=message.text.strip())
     await message.answer(
-        "Сколько минут готов уделять изучению одной темы?\n\n"
+        "Сколько минут готовы уделять изучению одной темы?\n\n"
         "_Совет: лучше начать с малого и постепенно увеличивать. "
         "5-10 минут каждый день эффективнее, чем 25 минут раз в неделю._",
         parse_mode="Markdown",
@@ -1104,7 +1105,7 @@ async def on_duration(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
         "Во сколько напоминать о новой теме?\n\n"
-        "_Напиши время в формате ЧЧ:ММ (например: 09:00)_\n"
+        "_Напишите время в формате ЧЧ:ММ (например: 09:00)_\n"
         "_Часовой пояс: UTC+3 (Москва)_",
         parse_mode="Markdown"
     )
@@ -1129,7 +1130,7 @@ async def on_schedule(message: Message, state: FSMContext):
         "Марафон длится *14 дней*. Каждый день — 2 темы:\n"
         "• *Теория* — материал + вопрос для размышления\n"
         "• *Практика* — задание + рабочий продукт\n\n"
-        "Выбери дату старта:",
+        "Выберите дату старта:",
         parse_mode="Markdown",
         reply_markup=kb_marathon_start()
     )
@@ -1157,7 +1158,7 @@ async def on_start_date(callback: CallbackQuery, state: FSMContext):
     goals_short = intern['goals'][:100] + '...' if len(intern['goals']) > 100 else intern['goals']
 
     await callback.message.edit_text(
-        f"📋 *Твой профиль:*\n\n"
+        f"📋 *Ваш профиль:*\n\n"
         f"👤 *Имя:* {intern['name']}\n"
         f"💼 *Занятие:* {intern['occupation']}\n"
         f"🎨 *Интересы:* {interests_str}\n\n"
@@ -1212,7 +1213,7 @@ async def on_confirm(callback: CallbackQuery, state: FSMContext):
         f"➡️ *Напоминания*\n\n"
         f"⏰ Буду напоминать в *{intern['schedule_time']}* каждый день.\n\n"
         f"{start_msg}\n\n"
-        f"{'Готов начать?' if can_start_now else 'Жду тебя в день старта!'}",
+        f"{'Готовы начать?' if can_start_now else 'Жду вас в день старта!'}",
         parse_mode="Markdown",
         reply_markup=kb_learn() if can_start_now else None
     )
@@ -1221,7 +1222,7 @@ async def on_confirm(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(OnboardingStates.confirming_profile, F.data == "restart")
 async def on_restart(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.edit_text("Давай заново!\n\nКак тебя зовут?")
+    await callback.message.edit_text("Давайте заново!\n\nКак вас зовут?")
     await state.set_state(OnboardingStates.waiting_for_name)
 
 # --- Обучение ---
@@ -1244,7 +1245,7 @@ async def cb_learn(callback: CallbackQuery, state: FSMContext):
 async def cb_later(callback: CallbackQuery):
     intern = await get_intern(callback.message.chat.id)
     await callback.answer()
-    await callback.message.edit_text(f"Жду тебя в {intern['schedule_time']}! Или /learn")
+    await callback.message.edit_text(f"Жду вас в {intern['schedule_time']}! Или /learn")
 
 @router.message(Command("progress"))
 async def cmd_progress(message: Message):
@@ -1338,8 +1339,8 @@ async def cmd_help(message: Message):
         "/help — показать эту справку\n\n"
         "*Как работает обучение:*\n"
         "1. Я отправляю персонализированный материал\n"
-        "2. Ты изучаешь его (5-25 мин)\n"
-        "3. Отвечаешь на вопрос для закрепления\n"
+        "2. Вы изучаете его (5-25 мин)\n"
+        "3. Отвечаете на вопрос для закрепления\n"
         "4. Тема засчитывается в прогресс\n\n"
         "Материал буду отправлять в заданное время или по /learn\n\n"
         "🔗 [Мастерская инженеров-менеджеров](https://system-school.ru/)\n\n"
@@ -1353,7 +1354,7 @@ async def cmd_help(message: Message):
 async def cmd_update(message: Message, state: FSMContext):
     intern = await get_intern(message.chat.id)
     if not intern['onboarding_completed']:
-        await message.answer("Сначала пройди онбординг: /start")
+        await message.answer("Сначала пройдите онбординг: /start")
         return
 
     duration = STUDY_DURATIONS.get(str(intern['study_duration']), {})
@@ -1384,7 +1385,7 @@ async def cmd_update(message: Message, state: FSMContext):
         f"{bloom['emoji']} Уровень: {bloom['short_name']}\n"
         f"🗓 Старт марафона: {marathon_start_str} (день {marathon_day})\n"
         f"⏰ Напоминание в {intern['schedule_time']}\n\n"
-        f"*Что хочешь обновить?*",
+        f"*Что хотите обновить?*",
         parse_mode="Markdown",
         reply_markup=kb_update_profile()
     )
@@ -1395,8 +1396,8 @@ async def on_upd_name(callback: CallbackQuery, state: FSMContext):
     intern = await get_intern(callback.message.chat.id)
     await callback.answer()
     await callback.message.edit_text(
-        f"👤 *Текущее имя:* {intern['name']}\n\n"
-        "Как тебя зовут?",
+        f"👤 *Ваше имя:* {intern['name']}\n\n"
+        "Как вас зовут?",
         parse_mode="Markdown"
     )
     await state.set_state(UpdateStates.updating_name)
@@ -1406,8 +1407,8 @@ async def on_upd_occupation(callback: CallbackQuery, state: FSMContext):
     intern = await get_intern(callback.message.chat.id)
     await callback.answer()
     await callback.message.edit_text(
-        f"💼 *Текущее занятие:* {intern.get('occupation', '') or 'не указано'}\n\n"
-        "Чем ты занимаешься?",
+        f"💼 *Ваше занятие:* {intern.get('occupation', '') or 'не указано'}\n\n"
+        "Чем вы занимаетесь?",
         parse_mode="Markdown"
     )
     await state.set_state(UpdateStates.updating_occupation)
@@ -1418,8 +1419,9 @@ async def on_upd_interests(callback: CallbackQuery, state: FSMContext):
     interests_str = ', '.join(intern['interests']) if intern['interests'] else 'не указаны'
     await callback.answer()
     await callback.message.edit_text(
-        f"🎨 *Текущие интересы:* {interests_str}\n\n"
-        "Расскажи о своих интересах и хобби:",
+        f"🎨 *Ваши интересы:* {interests_str}\n\n"
+        "_Например: технологии, космос, кулинария, спорт, музыка, путешествия_\n\n"
+        "Расскажите о своих интересах и хобби:",
         parse_mode="Markdown"
     )
     await state.set_state(UpdateStates.updating_interests)
@@ -1430,7 +1432,7 @@ async def on_upd_motivation(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
         f"💫 *Что сейчас важно:*\n{intern.get('motivation', '') or 'не указано'}\n\n"
-        "Что для тебя по-настоящему важно в жизни?",
+        "Что для вас по-настоящему важно в жизни?",
         parse_mode="Markdown"
     )
     await state.set_state(UpdateStates.updating_motivation)
@@ -1440,8 +1442,8 @@ async def on_upd_goals(callback: CallbackQuery, state: FSMContext):
     intern = await get_intern(callback.message.chat.id)
     await callback.answer()
     await callback.message.edit_text(
-        f"🎯 *Что хочешь изменить:*\n{intern['goals'] or 'не указано'}\n\n"
-        "Что хочешь изменить в своей жизни или работе?",
+        f"🎯 *Что хотите изменить:*\n{intern['goals'] or 'не указано'}\n\n"
+        "Что хотите изменить в своей жизни или работе?",
         parse_mode="Markdown"
     )
     await state.set_state(UpdateStates.updating_goals)
@@ -1453,7 +1455,7 @@ async def on_upd_duration(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
         f"⏱ *Текущее время:* {duration.get('emoji', '')} {duration.get('name', '')}\n\n"
-        "Сколько минут готов уделять изучению одной темы?",
+        "Сколько минут готовы уделять изучению одной темы?",
         parse_mode="Markdown",
         reply_markup=kb_study_duration()
     )
@@ -1466,7 +1468,7 @@ async def on_upd_schedule(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"⏰ *Текущее время напоминания:* {intern['schedule_time']}\n\n"
         "Во сколько напоминать о новой теме?\n"
-        "_Напиши время в формате ЧЧ:ММ (например: 09:00)_\n"
+        "_Напишите время в формате ЧЧ:ММ (например: 09:00)_\n"
         "_Часовой пояс: UTC+3 (Москва)_",
         parse_mode="Markdown"
     )
@@ -1478,10 +1480,10 @@ async def on_upd_bloom(callback: CallbackQuery, state: FSMContext):
     bloom = BLOOM_LEVELS.get(intern['bloom_level'], BLOOM_LEVELS[1])
     await callback.answer()
     await callback.message.edit_text(
-        f"🎚 *Текущий уровень:* {bloom['emoji']} {bloom['short_name']} «{bloom['name']}»\n"
+        f"🎚 *Текущий уровень сложности:* {bloom['emoji']} {bloom['short_name']} «{bloom['name']}»\n"
         f"_{bloom['desc']}_\n\n"
         f"Пройдено тем на этом уровне: {intern['topics_at_current_bloom']}/{BLOOM_AUTO_UPGRADE_AFTER}\n\n"
-        "Выбери новый уровень сложности вопросов:",
+        "Выберите новый уровень сложности вопросов:",
         parse_mode="Markdown",
         reply_markup=kb_bloom_level()
     )
@@ -1521,7 +1523,7 @@ async def on_upd_marathon_start(callback: CallbackQuery, state: FSMContext):
         f"🗓 *Текущая дата старта:* {current_date_str}\n"
         f"*День марафона:* {marathon_day} из {MARATHON_DAYS}\n\n"
         f"⚠️ *Внимание:* изменение даты старта влияет на расчёт текущего дня марафона.\n\n"
-        f"Выбери новую дату старта:",
+        f"Выберите новую дату старта:",
         parse_mode="Markdown",
         reply_markup=kb_marathon_start()
     )
@@ -1556,7 +1558,7 @@ async def on_save_marathon_start(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(UpdateStates.choosing_field, F.data == "upd_cancel")
 async def on_upd_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.answer("Отменено")
-    await callback.message.edit_text("Хорошо! Можешь продолжить обучение: /learn")
+    await callback.message.edit_text("Хорошо! Можете продолжить обучение: /learn")
     await state.clear()
 
 @router.message(UpdateStates.updating_motivation)
@@ -1575,7 +1577,7 @@ async def on_save_goals(message: Message, state: FSMContext):
     await update_intern(message.chat.id, goals=message.text.strip())
     await message.answer(
         "✅ Обновлено!\n\n"
-        "Теперь материалы будут персонализированы под твои цели.\n\n"
+        "Теперь материалы будут персонализированы под ваши цели.\n\n"
         "/learn — продолжить обучение\n"
         "/update — обновить ещё что-то"
     )
@@ -1597,7 +1599,7 @@ async def on_save_occupation(message: Message, state: FSMContext):
     await update_intern(message.chat.id, occupation=message.text.strip())
     await message.answer(
         "✅ Занятие обновлено!\n\n"
-        "Теперь примеры будут из твоей области.\n\n"
+        "Теперь примеры будут из вашей области.\n\n"
         "/learn — продолжить обучение\n"
         "/update — обновить ещё что-то"
     )
@@ -1609,7 +1611,7 @@ async def on_save_interests(message: Message, state: FSMContext):
     await update_intern(message.chat.id, interests=interests)
     await message.answer(
         "✅ Интересы обновлены!\n\n"
-        "Теперь примеры будут ближе к твоим хобби.\n\n"
+        "Теперь примеры будут ближе к вашим хобби.\n\n"
         "/learn — продолжить обучение\n"
         "/update — обновить ещё что-то"
     )
@@ -1655,7 +1657,7 @@ async def on_answer(message: Message, state: FSMContext):
     intern = await get_intern(message.chat.id)
 
     if len(message.text.strip()) < 20:
-        await message.answer("Напиши подробнее (хотя бы 2-3 предложения)")
+        await message.answer("Напишите подробнее (хотя бы 2-3 предложения)")
         return
 
     # Сохраняем ответ
@@ -1694,7 +1696,7 @@ async def on_answer(message: Message, state: FSMContext):
     # Сообщение о повышении уровня
     upgrade_msg = ""
     if level_upgraded:
-        upgrade_msg = f"\n\n🎉 *Поздравляю!* Ты перешёл на *{bloom['short_name']} «{bloom['name']}»*!"
+        upgrade_msg = f"\n\n🎉 *Поздравляем!* Вы перешли на *{bloom['short_name']} «{bloom['name']}»*!"
 
     # Получаем информацию о следующей доступной теме
     updated_intern = {
@@ -1719,7 +1721,7 @@ async def on_answer(message: Message, state: FSMContext):
             f"✅ *Тема засчитана!*\n\n"
             f"{progress_bar(done, total)}\n"
             f"{bloom['short_name']}{upgrade_msg}{next_topic_hint}\n\n"
-            f"Хочешь дополнительный вопрос посложнее?",
+            f"Хотите дополнительный вопрос посложнее?",
             parse_mode="Markdown",
             reply_markup=kb_bonus_question()
         )
@@ -1761,7 +1763,7 @@ async def on_bonus_yes(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
         f"🚀 *Бонусный вопрос* ({bloom['short_name']})\n\n"
         f"{question}\n\n"
-        f"Напиши ответ 👇",
+        f"Напишите ответ 👇",
         parse_mode="Markdown"
     )
     await state.set_state(LearningStates.waiting_for_bonus_answer)
@@ -1780,7 +1782,7 @@ async def on_bonus_no(callback: CallbackQuery, state: FSMContext):
 async def on_bonus_answer(message: Message, state: FSMContext):
     """Обработка ответа на бонусный вопрос"""
     if len(message.text.strip()) < 20:
-        await message.answer("Напиши подробнее (хотя бы 2-3 предложения)")
+        await message.answer("Напишите подробнее (хотя бы 2-3 предложения)")
         return
 
     intern = await get_intern(message.chat.id)
@@ -1801,7 +1803,7 @@ async def on_bonus_answer(message: Message, state: FSMContext):
 
     await message.answer(
         f"🌟 *Отлично!* Бонусный вопрос засчитан!\n\n"
-        f"Ты тренируешь навыки *{bloom['short_name']}* и выше.{next_topic_hint}\n\n"
+        f"Вы тренируете навыки *{bloom['short_name']}* и выше.{next_topic_hint}\n\n"
         f"/learn — следующая тема",
         parse_mode="Markdown"
     )
@@ -1835,7 +1837,7 @@ async def on_work_product(message: Message, state: FSMContext):
     intern = await get_intern(message.chat.id)
 
     if len(message.text.strip()) < 3:
-        await message.answer("Напиши хотя бы название рабочего продукта (например: «Список в заметках»)")
+        await message.answer("Напишите хотя бы название рабочего продукта (например: «Список в заметках»)")
         return
 
     # Сохраняем ответ (рабочий продукт)
@@ -1872,7 +1874,7 @@ async def on_work_product(message: Message, state: FSMContext):
             f"✅ Практика выполнена\n"
             f"📝 РП: {message.text.strip()}\n\n"
             f"{progress_bar(done, total)}\n\n"
-            f"Отличная работа! Возвращайся завтра за новыми темами.\n\n"
+            f"Отличная работа! Возвращайтесь завтра за новыми темами.\n\n"
             f"/progress — посмотреть прогресс",
             parse_mode="Markdown"
         )
@@ -1924,7 +1926,7 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
                 chat_id,
                 f"🗓 Марафон ещё не начался.\n\n"
                 f"Старт: *{start_date.strftime('%d.%m.%Y')}*\n\n"
-                f"Если хочешь изменить дату — /update",
+                f"Если хотите изменить дату — /update",
                 parse_mode="Markdown"
             )
             return
@@ -1936,8 +1938,8 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
                 chat_id,
                 f"🚀 *Марафон запущен!*\n\n"
                 f"Старт: *{today.strftime('%d.%m.%Y')}* (сегодня)\n\n"
-                f"Если хочешь изменить дату старта — /update\n\n"
-                f"А сейчас — твоя первая тема! 👇",
+                f"Если хотите изменить дату старта — /update\n\n"
+                f"А сейчас — ваша первая тема! 👇",
                 parse_mode="Markdown"
             )
             # Обновляем данные
@@ -1949,10 +1951,10 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
     if topics_today >= MAX_TOPICS_PER_DAY:
         await bot.send_message(
             chat_id,
-            f"🎯 *Сегодня ты уже прошёл {topics_today} темы — это максимум!*\n\n"
-            f"Лимит: *{MAX_TOPICS_PER_DAY} темы в день* (можно нагнать 1 день)\n\n"
+            f"🎯 *Сегодня вы уже прошли {topics_today} тем — это максимум!*\n\n"
+            f"Лимит: *{MAX_TOPICS_PER_DAY} тем в день* (можно нагнать 1 день)\n\n"
             f"Регулярность > Интенсивность\n\n"
-            f"Возвращайся завтра! Или в *{intern['schedule_time']}* я сам напомню.",
+            f"Возвращайтесь завтра! Или в *{intern['schedule_time']}* я сам напомню.",
             parse_mode="Markdown"
         )
         return
@@ -1987,31 +1989,40 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
                 f"✅ *День {marathon_day} завершён!*\n\n"
                 f"Пройдено тем: {completed_count}/{total_topics}\n\n"
                 f"Следующие темы откроются завтра.\n"
-                f"Возвращайся в *{intern['schedule_time']}*!",
+                f"Возвращайтесь в *{intern['schedule_time']}*!",
                 parse_mode="Markdown"
             )
             return
 
         if completed_count >= total_topics:
-            # Марафон завершён
+            # Марафон завершён — показываем статистику
+            weeks = get_sections_progress(intern['completed_topics'])
+            weeks_text = ""
+            for i, week in enumerate(weeks):
+                pct = int((week['completed'] / week['total']) * 100) if week['total'] > 0 else 0
+                bar = '█' * (pct // 10) + '░' * (10 - pct // 10)
+                weeks_text += f"{'1️⃣' if i == 0 else '2️⃣'} Неделя {i + 1}: {bar} {week['completed']}/{week['total']} ✅\n"
+
             await bot.send_message(
                 chat_id,
-                "🎉 *Поздравляю! Марафон пройден!*\n\n"
-                f"Ты прошёл все *{MARATHON_DAYS} дней* и *{total_topics} тем*.\n\n"
-                "Теперь ты — *Практикующий ученик* с базовыми практиками:\n"
+                "🎉 *Поздравляем! Марафон пройден!*\n\n"
+                f"Вы прошли все *{MARATHON_DAYS} дней* и *{total_topics} тем*.\n\n"
+                f"📊 *Ваша статистика:*\n"
+                f"{weeks_text}\n"
+                "Теперь вы — *Практикующий ученик* с базовыми практиками:\n"
                 "• Слоты саморазвития\n"
                 "• Трекер практик\n"
                 "• Мимолётные заметки\n"
                 "• Рабочие продукты\n\n"
-                "Хочешь продолжить развитие?\n"
-                "Заходи в [Мастерскую инженеров-менеджеров](https://system-school.ru/)!",
+                "Хотите продолжить развитие?\n"
+                "Заходите в [Мастерскую инженеров-менеджеров](https://system-school.ru/)!",
                 parse_mode="Markdown"
             )
             return
 
         await bot.send_message(
             chat_id,
-            "⚠️ Что-то пошло не так. Попробуй /learn ещё раз.",
+            "⚠️ Что-то пошло не так. Попробуйте /learn ещё раз.",
             parse_mode="Markdown"
         )
         return
@@ -2098,10 +2109,10 @@ async def send_practice_topic(chat_id: int, topic: dict, intern: dict, state: FS
     # Запрос рабочего продукта
     await bot.send_message(
         chat_id,
-        "📝 *Когда выполнишь задание:*\n\n"
-        "Напиши название своего рабочего продукта.\n\n"
+        "📝 *Когда выполните задание:*\n\n"
+        "Напишите название своего рабочего продукта.\n\n"
         f"_Например: «{examples[0] if examples else work_product}»_\n\n"
-        "_Проверки нет — просто напиши что сделал, и практика засчитается._",
+        "_Проверки нет — просто напишите, что сделали, и практика засчитается._",
         parse_mode="Markdown",
         reply_markup=kb_submit_work_product()
     )
@@ -2143,7 +2154,7 @@ async def send_scheduled_topic(chat_id: int, bot: Bot):
             await bot.send_message(
                 chat_id,
                 "🎉 *Марафон завершён!*\n\n"
-                "Заходи в [Мастерскую](https://system-school.ru/) для продвинутых программ.",
+                "Заходите в [Мастерскую](https://system-school.ru/) для продвинутых программ.",
                 parse_mode="Markdown"
             )
         return
@@ -2210,7 +2221,7 @@ async def send_reminder(chat_id: int, reminder_type: str, bot: Bot):
         await bot.send_message(
             chat_id,
             f"⏰ *Напоминание*\n\n"
-            f"День {marathon_day} марафона ждёт тебя!\n\n"
+            f"День {marathon_day} марафона ждёт вас!\n\n"
             f"Всего 2 темы на сегодня: теория и практика.\n\n"
             f"/learn — начать",
             parse_mode="Markdown"
@@ -2220,7 +2231,7 @@ async def send_reminder(chat_id: int, reminder_type: str, bot: Bot):
             chat_id,
             f"🔔 *Последнее напоминание*\n\n"
             f"День {marathon_day} ещё не начат.\n\n"
-            f"Помни: *регулярность > интенсивность*.\n"
+            f"Помните: *регулярность > интенсивность*.\n"
             f"Даже 15 минут сегодня — это прогресс.\n\n"
             f"/learn — начать",
             parse_mode="Markdown"
@@ -2292,7 +2303,7 @@ async def on_unknown_callback(callback: CallbackQuery, state: FSMContext):
     """Обработка неизвестных callback-запросов (истёкшие кнопки и т.д.)"""
     logger.warning(f"Unhandled callback: {callback.data} from user {callback.from_user.id}")
     await callback.answer(
-        "Кнопка устарела. Используй /learn для продолжения.",
+        "Кнопка устарела. Используйте /learn для продолжения.",
         show_alert=True
     )
 
@@ -2312,12 +2323,12 @@ async def on_unknown_message(message: Message, state: FSMContext):
     if not intern:
         # Новый пользователь
         await message.answer(
-            "Привет! Для начала используй /start"
+            "Здравствуйте! Для начала используйте /start"
         )
     else:
         # Зарегистрированный пользователь
         await message.answer(
-            "Используй команды:\n"
+            "Используйте команды:\n"
             "/learn — получить тему\n"
             "/progress — мой прогресс\n"
             "/profile — мой профиль\n"
