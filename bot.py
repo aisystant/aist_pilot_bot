@@ -2571,8 +2571,11 @@ async def main():
     dp.include_router(router)
 
     # Подключаем роутеры режимов (Лента, выбор режима)
-    from engines.integration import setup_routers
-    setup_routers(dp)
+    try:
+        from engines.integration import setup_routers
+        setup_routers(dp)
+    except ImportError as e:
+        logger.warning(f"⚠️ Не удалось загрузить engines: {e}. Режимы Лента и выбор режима недоступны.")
 
     # Сохраняем dispatcher для доступа к FSM storage из планировщика
     _dispatcher = dp
