@@ -179,19 +179,30 @@ async def create_tables(pool: asyncpg.Pool):
             CREATE TABLE IF NOT EXISTS feed_weeks (
                 id SERIAL PRIMARY KEY,
                 chat_id BIGINT,
-                
+
                 week_number INTEGER,
                 week_start DATE,
-                
+
                 suggested_topics TEXT DEFAULT '[]',
                 accepted_topics TEXT DEFAULT '[]',
-                
+
                 current_day INTEGER DEFAULT 0,
                 status TEXT DEFAULT 'planning',
-                
+
+                ended_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT NOW()
             )
         ''')
+
+        # Миграции для feed_weeks
+        feed_week_migrations = [
+            'ALTER TABLE feed_weeks ADD COLUMN IF NOT EXISTS ended_at TIMESTAMP',
+        ]
+        for migration in feed_week_migrations:
+            try:
+                await conn.execute(migration)
+            except Exception:
+                pass
 
         # ═══════════════════════════════════════════════════════════
         # ЛЕНТА: СЕССИИ (NEW)
@@ -199,21 +210,33 @@ async def create_tables(pool: asyncpg.Pool):
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS feed_sessions (
                 id SERIAL PRIMARY KEY,
-                chat_id BIGINT,
                 week_id INTEGER,
-                
+
                 day_number INTEGER,
-                topic TEXT,
+                topic_title TEXT,
                 content TEXT DEFAULT '{}',
-                
-                user_fixation TEXT,
-                
-                sent_at TIMESTAMP,
+
+                session_date DATE,
+                status TEXT DEFAULT 'active',
+                fixation_text TEXT,
+
                 completed_at TIMESTAMP,
-                
                 created_at TIMESTAMP DEFAULT NOW()
             )
         ''')
+
+        # Миграции для feed_sessions (добавляем недостающие колонки)
+        feed_session_migrations = [
+            'ALTER TABLE feed_sessions ADD COLUMN IF NOT EXISTS topic_title TEXT',
+            'ALTER TABLE feed_sessions ADD COLUMN IF NOT EXISTS session_date DATE',
+            'ALTER TABLE feed_sessions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT \'active\'',
+            'ALTER TABLE feed_sessions ADD COLUMN IF NOT EXISTS fixation_text TEXT',
+        ]
+        for migration in feed_session_migrations:
+            try:
+                await conn.execute(migration)
+            except Exception:
+                pass
 
         # ═══════════════════════════════════════════════════════════
         # ЛОГ АКТИВНОСТИ (NEW)
