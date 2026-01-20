@@ -325,7 +325,53 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT NOW()
             )
         ''')
-    
+
+        # Лента: недельные планы
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS feed_weeks (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT,
+                week_number INTEGER,
+                week_start DATE,
+                suggested_topics TEXT DEFAULT '[]',
+                accepted_topics TEXT DEFAULT '[]',
+                current_day INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'planning',
+                ended_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        ''')
+
+        # Лента: сессии
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS feed_sessions (
+                id SERIAL PRIMARY KEY,
+                week_id INTEGER,
+                day_number INTEGER,
+                topic_title TEXT,
+                content TEXT DEFAULT '{}',
+                session_date DATE,
+                status TEXT DEFAULT 'active',
+                fixation_text TEXT,
+                completed_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        ''')
+
+        # Лог активности
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT,
+                activity_date DATE,
+                activity_type TEXT,
+                mode TEXT DEFAULT 'marathon',
+                reference_id INTEGER,
+                created_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(chat_id, activity_date, activity_type)
+            )
+        ''')
+
     logger.info("✅ База данных инициализирована")
 
 async def get_intern(chat_id: int) -> dict:
