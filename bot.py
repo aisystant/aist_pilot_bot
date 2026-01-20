@@ -132,11 +132,8 @@ BLOOM_LEVELS = {
 BLOOM_AUTO_UPGRADE_AFTER = 7  # после 7 тем уровень повышается
 
 # Лимит тем в день (для развития систематичности)
-# PRODUCTION VALUES (восстановить после тестирования):
-# DAILY_TOPICS_LIMIT = 2
-# MAX_TOPICS_PER_DAY = 4
-DAILY_TOPICS_LIMIT = 999  # ВРЕМЕННО: для тестирования
-MAX_TOPICS_PER_DAY = 999  # ВРЕМЕННО: для тестирования
+DAILY_TOPICS_LIMIT = 2
+MAX_TOPICS_PER_DAY = 4  # макс тем в день (нагнать 1 день)
 MARATHON_DAYS = 14  # длительность марафона
 
 # ============= ЗАГРУЗКА МЕТАДАННЫХ ТЕМ =============
