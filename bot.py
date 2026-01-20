@@ -129,10 +129,11 @@ BLOOM_LEVELS = {
 BLOOM_AUTO_UPGRADE_AFTER = 7  # после 7 тем уровень повышается
 
 # Лимит тем в день (для развития систематичности)
-# DAILY_TOPICS_LIMIT = 2  # не используется в коде
-# MAX_TOPICS_PER_DAY = 4  # макс тем в день (нагнать 1 день)
-DAILY_TOPICS_LIMIT = 100  # ВРЕМЕННО: для тестирования
-MAX_TOPICS_PER_DAY = 100  # ВРЕМЕННО: для тестирования
+# PRODUCTION VALUES (восстановить после тестирования):
+# DAILY_TOPICS_LIMIT = 2
+# MAX_TOPICS_PER_DAY = 4
+DAILY_TOPICS_LIMIT = 999  # ВРЕМЕННО: для тестирования
+MAX_TOPICS_PER_DAY = 999  # ВРЕМЕННО: для тестирования
 MARATHON_DAYS = 14  # длительность марафона
 
 # ============= СОСТОЯНИЯ FSM =============
@@ -799,16 +800,18 @@ def get_total_topics() -> int:
 
 def get_marathon_day(intern: dict) -> int:
     """Получить текущий день марафона для участника"""
-    start_date = intern.get('marathon_start_date')
-    if not start_date:
-        return 0
+    # ВРЕМЕННО: для тестирования возвращаем максимальный день
+    # PRODUCTION CODE (восстановить после тестирования):
+    # start_date = intern.get('marathon_start_date')
+    # if not start_date:
+    #     return 0
+    # today = moscow_today()
+    # if isinstance(start_date, datetime):
+    #     start_date = start_date.date()
+    # days_passed = (today - start_date).days
+    # return min(days_passed + 1, MARATHON_DAYS)  # День 1-14
 
-    today = moscow_today()
-    if isinstance(start_date, datetime):
-        start_date = start_date.date()
-
-    days_passed = (today - start_date).days
-    return min(days_passed + 1, MARATHON_DAYS)  # День 1-14
+    return MARATHON_DAYS  # ВРЕМЕННО: все дни открыты для тестирования
 
 def get_topics_for_day(day: int) -> List[dict]:
     """Получить темы для конкретного дня марафона"""
