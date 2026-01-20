@@ -98,30 +98,33 @@ STUDY_DURATIONS = {
 }
 
 # Уровни сложности вопросов (по таксономии Блума)
+# Блум 1: Знание — вопросы "в чём разница"
+# Блум 2: Понимание — открытые вопросы
+# Блум 3: Применение — анализ, примеры из жизни/работы
 BLOOM_LEVELS = {
     1: {
         "emoji": "🔵",
-        "name": "Понимаю",
+        "name": "Знание",
         "short_name": "Сложность-1",
-        "desc": "Запоминание и понимание концепций",
-        "question_type": "Объясни своими словами, что такое {concept}? Приведи пример из своей области.",
-        "prompt": "Создай вопрос на ПОНИМАНИЕ темы. Попроси объяснить концепцию своими словами или привести пример."
+        "desc": "Различение и запоминание понятий",
+        "question_type": "В чём разница между {concept} и связанными понятиями?",
+        "prompt": "Создай вопрос на РАЗЛИЧЕНИЕ понятий. Попроси объяснить, в чём разница между концепциями, чем отличаются подходы."
     },
     2: {
         "emoji": "🟡",
-        "name": "Применяю",
+        "name": "Понимание",
         "short_name": "Сложность-2",
-        "desc": "Применение и анализ в практике",
-        "question_type": "Как бы ты применил {concept} в своей работе? Разбери конкретную ситуацию.",
-        "prompt": "Создай вопрос на ПРИМЕНЕНИЕ темы. Попроси применить концепцию к конкретной рабочей ситуации стажера или проанализировать кейс."
+        "desc": "Открытые вопросы на понимание",
+        "question_type": "Как вы понимаете {concept}? Почему это важно?",
+        "prompt": "Создай ОТКРЫТЫЙ вопрос на понимание. Попроси объяснить своими словами, раскрыть связи между понятиями, объяснить почему что-то важно."
     },
     3: {
         "emoji": "🔴",
-        "name": "Анализирую",
+        "name": "Применение",
         "short_name": "Сложность-3",
-        "desc": "Оценка и создание нового",
-        "question_type": "Предложи своё решение на основе {concept}. Оцени плюсы и минусы разных подходов.",
-        "prompt": "Создай вопрос на АНАЛИЗ/ОЦЕНКУ. Попроси предложить своё решение, оценить подходы или создать план действий на основе изученного."
+        "desc": "Анализ и примеры из практики",
+        "question_type": "Приведите пример {concept} из вашей жизни или работы. Проанализируйте ситуацию.",
+        "prompt": "Создай вопрос на ПРИМЕНЕНИЕ и АНАЛИЗ. Попроси привести конкретный пример из личной жизни или рабочей практики, проанализировать ситуацию, объяснить коллеге."
     }
 }
 
@@ -132,6 +135,75 @@ BLOOM_AUTO_UPGRADE_AFTER = 7  # после 7 тем уровень повыша�
 DAILY_TOPICS_LIMIT = 2
 MAX_TOPICS_PER_DAY = 4  # макс тем в день (нагнать 1 день)
 MARATHON_DAYS = 14  # длительность марафона
+
+# ============= ЗАГРУЗКА МЕТАДАННЫХ ТЕМ =============
+
+TOPICS_DIR = Path(__file__).parent / "topics"
+
+def load_topic_metadata(topic_id: str) -> Optional[dict]:
+    """Загружает метаданные темы из YAML файла
+
+    Args:
+        topic_id: ID темы (например, "1-1-three-states")
+
+    Returns:
+        Словарь с метаданными или None если файл не найден
+    """
+    if not TOPICS_DIR.exists():
+        return None
+
+    # Пробуем найти файл по ID
+    for yaml_file in TOPICS_DIR.glob("*.yaml"):
+        if yaml_file.name.startswith("_"):  # Пропускаем служебные файлы
+            continue
+        try:
+            with open(yaml_file, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+                if data and data.get('id') == topic_id:
+                    return data
+        except Exception as e:
+            logger.error(f"Ошибка загрузки метаданных {yaml_file}: {e}")
+
+    return None
+
+def get_bloom_questions(metadata: dict, bloom_level: int, study_duration: int) -> dict:
+    """Получает настройки вопросов для заданного уровня Блума и времени
+
+    Args:
+        metadata: метаданные темы
+        bloom_level: уровень Блума (1, 2 или 3)
+        study_duration: время на тему в минутах (5, 10, 15, 20, 25)
+
+    Returns:
+        Словарь с настройками вопросов или пустой словарь
+    """
+    time_levels = metadata.get('time_levels', {})
+
+    # Нормализуем время к ближайшему уровню (5, 15, 25)
+    if study_duration <= 5:
+        time_key = 5
+    elif study_duration <= 15:
+        time_key = 15
+    else:
+        time_key = 25
+
+    time_config = time_levels.get(time_key, {})
+    bloom_key = f"bloom_{bloom_level}"
+
+    return time_config.get(bloom_key, {})
+
+def get_search_keys(metadata: dict, mcp_type: str = "guides_mcp") -> List[str]:
+    """Получает ключи поиска для MCP из метаданных
+
+    Args:
+        metadata: метаданные темы
+        mcp_type: тип MCP ("guides_mcp" или "knowledge_mcp")
+
+    Returns:
+        Список поисковых запросов
+    """
+    search_keys = metadata.get('search_keys', {})
+    return search_keys.get(mcp_type, [])
 
 # ============= СОСТОЯНИЯ FSM =============
 
@@ -347,7 +419,68 @@ def get_topics_today(intern: dict) -> int:
     # Иначе — новый день, счётчик обнуляется
     return 0
 
-def get_personalization_prompt(intern: dict) -> str:
+# Шаблоны форматов примеров для ротации
+EXAMPLE_TEMPLATES = [
+    ("аналогия", "Используй аналогию — перенеси структуру или принцип из одной области в другую"),
+    ("мини-кейс", "Используй мини-кейс — опиши ситуацию → выбор → последствия"),
+    ("контрпример", "Используй контрпример — покажи как НЕ работает, чтобы подчеркнуть как работает правильно"),
+    ("сравнение", "Используй сравнение двух подходов — правильный vs неправильный"),
+    ("ошибка-мастерство", "Покажи типичную ошибку новичка и приём мастера"),
+    ("наблюдение", "Предложи наблюдательный эксперимент — что можно заметить в повседневной жизни"),
+]
+
+# Источники примеров для ротации
+EXAMPLE_SOURCES = ["работа", "близкая профессиональная сфера", "интерес/хобби", "далёкая сфера для контраста"]
+
+
+def get_example_rules(intern: dict, marathon_day: int) -> str:
+    """Генерирует правила для примеров с ротацией по дню марафона"""
+    interests = intern.get('interests', [])
+    occupation = intern.get('occupation', '') or 'работа'
+
+    # Выбираем интерес по дню (циклически)
+    if interests:
+        interest_idx = (marathon_day - 1) % len(interests)
+        today_interest = interests[interest_idx]
+        other_interests = [i for idx, i in enumerate(interests) if idx != interest_idx]
+    else:
+        today_interest = None
+        other_interests = []
+
+    # Выбираем шаблон формата по дню
+    template_idx = (marathon_day - 1) % len(EXAMPLE_TEMPLATES)
+    template_name, template_instruction = EXAMPLE_TEMPLATES[template_idx]
+
+    # Ротация порядка источников по дню
+    shift = (marathon_day - 1) % len(EXAMPLE_SOURCES)
+    rotated_sources = EXAMPLE_SOURCES[shift:] + EXAMPLE_SOURCES[:shift]
+
+    # Формируем правила
+    sources_text = "\n".join([f"  {i+1}. {src}" for i, src in enumerate(rotated_sources)])
+
+    interest_text = f'"{today_interest}"' if today_interest else "не указан"
+    other_interests_text = f" (другие интересы для разнообразия: {', '.join(other_interests)})" if other_interests else ""
+
+    return f"""
+ПРАВИЛА ДЛЯ ПРИМЕРОВ (День {marathon_day}):
+
+Формат примеров сегодня: **{template_name}**
+{template_instruction}
+
+Порядок источников для примеров (от первого к последнему):
+{sources_text}
+
+Детали источников:
+- Работа/профессия: "{occupation}"
+- Интерес дня: {interest_text}{other_interests_text}
+- Близкая сфера: смежная с работой "{occupation}" область
+- Далёкая сфера: что-то неожиданное для контраста (спорт, искусство, природа, история)
+
+ВАЖНО: Используй интерес дня ({interest_text}), а НЕ всегда первый из списка!
+"""
+
+
+def get_personalization_prompt(intern: dict, marathon_day: int = 1) -> str:
     """Генерирует промпт для персонализации на основе упрощённого профиля"""
     duration = STUDY_DURATIONS.get(str(intern['study_duration']), {"words": 1500})
 
@@ -355,6 +488,8 @@ def get_personalization_prompt(intern: dict) -> str:
     occupation = intern.get('occupation', '') or 'не указано'
     motivation = intern.get('motivation', '') or 'не указано'
     goals = intern.get('goals', '') or 'не указаны'
+
+    example_rules = get_example_rules(intern, marathon_day)
 
     return f"""
 ПРОФИЛЬ СТАЖЕРА:
@@ -370,13 +505,7 @@ def get_personalization_prompt(intern: dict) -> str:
 2. Добавляй мотивационный блок, опираясь на ценности стажера: "{motivation}"
 3. Объём текста должен быть рассчитан на {intern['study_duration']} минут чтения (~{duration.get('words', 1500)} слов)
 4. Пиши простым языком, избегай академического стиля
-
-ПРАВИЛА ДЛЯ ПРИМЕРОВ:
-- Первый пример — из рабочей сферы стажера ("{occupation}")
-- Второй пример — из близкой профессиональной сферы
-- Третий пример (если нужен) — из интересов/хобби ({interests}), НЕ БОЛЕЕ ОДНОГО примера из интересов
-- Четвёртый пример (если нужен) — из абсолютно далёкой сферы для контраста
-"""
+{example_rules}"""
 
 # ============= CLAUDE API =============
 
@@ -413,37 +542,56 @@ class ClaudeClient:
                 logger.error(f"Claude API exception: {e}")
                 return None
 
-    async def generate_content(self, topic: dict, intern: dict, mcp_client=None, knowledge_client=None) -> str:
+    async def generate_content(self, topic: dict, intern: dict, marathon_day: int = 1, mcp_client=None, knowledge_client=None) -> str:
         """Генерирует контент для теоретической темы марафона
 
         Args:
             topic: тема для генерации
             intern: профиль стажера
+            marathon_day: день марафона для ротации примеров
             mcp_client: клиент MCP для руководств (guides)
             knowledge_client: клиент MCP для базы знаний (knowledge) - приоритет свежим постам
         """
         duration = STUDY_DURATIONS.get(str(intern['study_duration']), {"words": 1500})
         words = duration.get('words', 1500)
 
-        search_query = f"{topic.get('title')} {topic.get('main_concept')}"
+        # Пробуем загрузить метаданные темы для точных поисковых запросов
+        topic_id = topic.get('id', '')
+        metadata = load_topic_metadata(topic_id) if topic_id else None
 
-        # Получаем контекст из MCP руководств
+        # Используем ключи поиска из метаданных или формируем общий запрос
+        if metadata:
+            guides_search_keys = get_search_keys(metadata, "guides_mcp")
+            knowledge_search_keys = get_search_keys(metadata, "knowledge_mcp")
+            logger.info(f"Загружены метаданные темы {topic_id}: {len(guides_search_keys)} guides, {len(knowledge_search_keys)} knowledge")
+        else:
+            # Fallback на общий запрос
+            default_query = f"{topic.get('title')} {topic.get('main_concept')}"
+            guides_search_keys = [default_query]
+            knowledge_search_keys = [default_query]
+
+        # Получаем контекст из MCP руководств (используем все ключи поиска)
         guides_context = ""
         if mcp_client:
             try:
-                search_results = await mcp_client.semantic_search(search_query, lang="ru", limit=3)
-                if search_results:
-                    context_parts = []
-                    for item in search_results[:3]:
-                        if isinstance(item, dict):
-                            text = item.get('text', item.get('content', ''))
-                            if text:
+                context_parts = []
+                seen_texts = set()  # Для дедупликации
+                for search_query in guides_search_keys[:3]:  # Максимум 3 запроса
+                    search_results = await mcp_client.semantic_search(search_query, lang="ru", limit=2)
+                    if search_results:
+                        for item in search_results:
+                            if isinstance(item, dict):
+                                text = item.get('text', item.get('content', ''))
+                            elif isinstance(item, str):
+                                text = item
+                            else:
+                                continue
+                            if text and text[:100] not in seen_texts:
+                                seen_texts.add(text[:100])
                                 context_parts.append(text[:1500])
-                        elif isinstance(item, str):
-                            context_parts.append(item[:1500])
-                    if context_parts:
-                        guides_context = "\n\n".join(context_parts)
-                        logger.info(f"{mcp_client.name}: найдено {len(context_parts)} фрагментов контекста")
+                if context_parts:
+                    guides_context = "\n\n".join(context_parts[:5])  # Максимум 5 фрагментов
+                    logger.info(f"{mcp_client.name}: найдено {len(context_parts)} фрагментов контекста")
             except Exception as e:
                 logger.error(f"{mcp_client.name} search error: {e}")
 
@@ -451,25 +599,30 @@ class ClaudeClient:
         knowledge_context = ""
         if knowledge_client:
             try:
-                # Knowledge MCP использует инструмент 'search' (не semantic_search)
-                search_results = await knowledge_client.search(search_query, limit=3)
-                if search_results:
-                    context_parts = []
-                    for item in search_results[:3]:
-                        if isinstance(item, dict):
-                            text = item.get('text', item.get('content', ''))
-                            date_info = item.get('created_at', item.get('date', ''))
-                            if text:
-                                # Добавляем информацию о дате, если есть
+                context_parts = []
+                seen_texts = set()
+                for search_query in knowledge_search_keys[:3]:  # Максимум 3 запроса
+                    # Сортируем по дате создания (сначала новые)
+                    search_results = await knowledge_client.semantic_search(
+                        search_query, lang="ru", limit=2, sort_by="created_at:desc"
+                    )
+                    if search_results:
+                        for item in search_results:
+                            if isinstance(item, dict):
+                                text = item.get('text', item.get('content', ''))
+                                date_info = item.get('created_at', item.get('date', ''))
                                 if date_info:
-                                    context_parts.append(f"[{date_info}] {text[:1500]}")
-                                else:
-                                    context_parts.append(text[:1500])
-                        elif isinstance(item, str):
-                            context_parts.append(item[:1500])
-                    if context_parts:
-                        knowledge_context = "\n\n".join(context_parts)
-                        logger.info(f"{knowledge_client.name}: найдено {len(context_parts)} фрагментов")
+                                    text = f"[{date_info}] {text}"
+                            elif isinstance(item, str):
+                                text = item
+                            else:
+                                continue
+                            if text and text[:100] not in seen_texts:
+                                seen_texts.add(text[:100])
+                                context_parts.append(text[:1500])
+                if context_parts:
+                    knowledge_context = "\n\n".join(context_parts[:5])  # Максимум 5 фрагментов
+                    logger.info(f"{knowledge_client.name}: найдено {len(context_parts)} фрагментов (свежие посты)")
             except Exception as e:
                 logger.error(f"{knowledge_client.name} search error: {e}")
 
@@ -494,10 +647,16 @@ class ClaudeClient:
             context_instruction = "Используй предоставленный контекст из материалов Aisystant как основу."
 
         system_prompt = f"""Ты — персональный наставник по системному мышлению и личному развитию.
-{get_personalization_prompt(intern)}
+{get_personalization_prompt(intern, marathon_day)}
 
 Создай текст на {intern['study_duration']} минут чтения (~{words} слов). Без заголовков, только абзацы.
 Текст должен быть вовлекающим, с примерами из жизни читателя.
+
+СТРОГО ЗАПРЕЩЕНО:
+- Добавлять вопросы в любом месте текста
+- Использовать заголовки типа "Вопрос:", "Вопрос для размышления:", "Вопрос для проверки:" и т.п.
+- Заканчивать текст вопросом
+Вопрос будет задан отдельно после текста.
 {context_instruction}"""
 
         pain_point = topic.get('pain_point', '')
@@ -522,10 +681,10 @@ class ClaudeClient:
         result = await self.generate(system_prompt, user_prompt)
         return result or "Не удалось сгенерировать контент. Попробуйте /learn ещё раз."
 
-    async def generate_practice_intro(self, topic: dict, intern: dict) -> str:
+    async def generate_practice_intro(self, topic: dict, intern: dict, marathon_day: int = 1) -> str:
         """Генерирует вводный текст для практического задания"""
         system_prompt = f"""Ты — персональный наставник по системному мышлению.
-{get_personalization_prompt(intern)}
+{get_personalization_prompt(intern, marathon_day)}
 
 Напиши краткое (3-5 предложений) введение к практическому заданию.
 Объясни, зачем это задание и как оно связано с темой дня."""
@@ -544,25 +703,79 @@ class ClaudeClient:
         result = await self.generate(system_prompt, user_prompt)
         return result or ""
 
-    async def generate_question(self, topic: dict, intern: dict, bloom_level: int = None) -> str:
-        """Генерирует вопрос по теме с учётом уровня Блума"""
+    async def generate_question(self, topic: dict, intern: dict, marathon_day: int = 1, bloom_level: int = None) -> str:
+        """Генерирует вопрос по теме с учётом уровня Блума, ротации контекстов и метаданных темы
+
+        Использует шаблоны вопросов из метаданных темы (topics/*.yaml) если доступны.
+        Учитывает:
+        - Блум 1 (Знание): вопросы "в чём разница"
+        - Блум 2 (Понимание): открытые вопросы
+        - Блум 3 (Применение): анализ, примеры из жизни/работы
+        - Ротация контекстов по дню марафона
+        """
         level = bloom_level or intern.get('bloom_level', 1)
         bloom = BLOOM_LEVELS.get(level, BLOOM_LEVELS[1])
         occupation = intern.get('occupation', '') or 'работа'
+        study_duration = intern.get('study_duration', 15)
+        interests = intern.get('interests', [])
 
-        system_prompt = f"""Создай один вопрос для проверки понимания темы.
-{get_personalization_prompt(intern)}
+        # Выбираем контекст для вопроса по дню (ротация)
+        question_contexts = [
+            f'профессии ("{occupation}")',
+            f'интереса/хобби' + (f' ("{interests[(marathon_day - 1) % len(interests)]}")' if interests else ''),
+            'повседневной жизни',
+            'отношений с людьми',
+            'личного развития',
+            'принятия решений',
+        ]
+        context_idx = (marathon_day - 1) % len(question_contexts)
+        question_context = question_contexts[context_idx]
 
-УРОВЕНЬ СЛОЖНОСТИ ВОПРОСА: {bloom['name']} ({bloom['desc']})
-{bloom['prompt']}
+        # Пробуем загрузить метаданные темы
+        topic_id = topic.get('id', '')
+        metadata = load_topic_metadata(topic_id) if topic_id else None
 
-ВАЖНО: Вопрос должен быть кратким — не более 2 абзацев.
-Вопрос должен требовать развёрнутого ответа и быть связан с занятием стажера: "{occupation}"."""
+        # Получаем настройки вопросов из метаданных
+        question_config = {}
+        question_templates = []
+        if metadata:
+            question_config = get_bloom_questions(metadata, level, study_duration)
+            question_templates = question_config.get('question_templates', [])
+            logger.info(f"Загружены шаблоны вопросов для {topic_id}: bloom_{level}, {study_duration}мин, {len(question_templates)} шаблонов")
+
+        # Определяем тип вопроса по уровню Блума
+        question_type_hints = {
+            1: "Задай вопрос на РАЗЛИЧЕНИЕ понятий (\"В чём разница между...\", \"Чем отличается...\").",
+            2: "Задай ОТКРЫТЫЙ вопрос на понимание (\"Почему...\", \"Как вы понимаете...\", \"Объясните связь...\").",
+            3: "Задай вопрос на ПРИМЕНЕНИЕ и АНАЛИЗ (\"Приведите пример из жизни\", \"Проанализируйте ситуацию\", \"Как бы вы объяснили коллеге...\")."
+        }
+        question_type_hint = question_type_hints.get(level, question_type_hints[1])
+
+        # Формируем подсказки по шаблонам
+        templates_hint = ""
+        if question_templates:
+            templates_hint = f"\nПРИМЕРЫ ВОПРОСОВ (используй как образец стиля):\n- " + "\n- ".join(question_templates[:3])
+
+        system_prompt = f"""Ты генерируешь ТОЛЬКО ОДИН КОРОТКИЙ ВОПРОС. Ничего больше.
+
+СТРОГО ЗАПРЕЩЕНО:
+- Писать введение, объяснения, контекст или любой текст перед вопросом
+- Писать заголовки типа "Вопрос:", "Вопрос для размышления:" и т.п.
+- Писать примеры, истории, мотивацию
+- Писать что-либо после вопроса
+
+Выдай ТОЛЬКО сам вопрос — 1-3 предложения максимум.
+
+КОНТЕКСТ ВОПРОСА (День {marathon_day}): {question_context}
+Уровень сложности: {bloom['name']} — {bloom['desc']}
+{question_type_hint}
+{templates_hint}"""
 
         user_prompt = f"""Тема: {topic.get('title')}
 Понятие: {topic.get('main_concept')}
+Контекст: {question_context}
 
-Создай вопрос уровня "{bloom['name']}" для этой темы."""
+Выдай ТОЛЬКО вопрос (1-3 предложения), без введения и пояснений."""
 
         result = await self.generate(system_prompt, user_prompt)
         return result or bloom['question_type'].format(concept=topic.get('main_concept', 'эту тему'))
@@ -574,9 +787,10 @@ claude = ClaudeClient()
 class MCPClient:
     """Универсальный клиент для работы с MCP серверами Aisystant"""
 
-    def __init__(self, url: str, name: str = "MCP"):
+    def __init__(self, url: str, name: str = "MCP", search_tool: str = "semantic_search"):
         self.base_url = url
         self.name = name
+        self.search_tool = search_tool  # "semantic_search" для guides, "search" для knowledge
         self._request_id = 0
 
     def _next_id(self) -> int:
@@ -667,23 +881,25 @@ class MCPClient:
         return ""
 
     async def semantic_search(self, query: str, lang: str = "ru", limit: int = 5, sort_by: str = None) -> List[dict]:
-        """Семантический поиск по руководствам (guides MCP)
+        """Семантический поиск по руководствам или базе знаний
 
         Args:
             query: поисковый запрос
-            lang: язык (ru/en)
+            lang: язык (ru/en) — только для MCP-Guides
             limit: максимальное количество результатов
             sort_by: сортировка (например, "created_at:desc" для свежих постов)
         """
         args = {
             "query": query,
-            "lang": lang,
             "limit": limit
         }
+        # Параметр lang только для semantic_search (MCP-Guides)
+        if self.search_tool == "semantic_search":
+            args["lang"] = lang
         if sort_by:
             args["sort"] = sort_by
 
-        result = await self._call("semantic_search", args)
+        result = await self._call(self.search_tool, args)
         if result and "content" in result:
             for item in result.get("content", []):
                 if item.get("type") == "text":
@@ -724,7 +940,7 @@ class MCPClient:
 
 # Создаём клиенты для двух MCP серверов
 mcp_guides = MCPClient(MCP_URL, "MCP-Guides")
-mcp_knowledge = MCPClient(KNOWLEDGE_MCP_URL, "MCP-Knowledge")
+mcp_knowledge = MCPClient(KNOWLEDGE_MCP_URL, "MCP-Knowledge", search_tool="search")
 
 # Для обратной совместимости
 mcp = mcp_guides
@@ -797,16 +1013,18 @@ def get_total_topics() -> int:
 
 def get_marathon_day(intern: dict) -> int:
     """Получить текущий день марафона для участника"""
-    start_date = intern.get('marathon_start_date')
-    if not start_date:
-        return 0
+    # ВРЕМЕННО: для тестирования возвращаем максимальный день
+    # PRODUCTION CODE (восстановить после тестирования):
+    # start_date = intern.get('marathon_start_date')
+    # if not start_date:
+    #     return 0
+    # today = moscow_today()
+    # if isinstance(start_date, datetime):
+    #     start_date = start_date.date()
+    # days_passed = (today - start_date).days
+    # return min(days_passed + 1, MARATHON_DAYS)  # День 1-14
 
-    today = moscow_today()
-    if isinstance(start_date, datetime):
-        start_date = start_date.date()
-
-    days_passed = (today - start_date).days
-    return min(days_passed + 1, MARATHON_DAYS)  # День 1-14
+    return MARATHON_DAYS  # ВРЕМЕННО: все дни открыты для тестирования
 
 def get_topics_for_day(day: int) -> List[dict]:
     """Получить темы для конкретного дня марафона"""
@@ -1027,14 +1245,14 @@ async def cmd_start(message: Message, state: FSMContext):
             f"👋 С возвращением, {intern['name']}!\n\n"
             f"/learn — продолжить обучение\n"
             f"/progress — статистика\n"
-            f"/profile — твой профиль"
+            f"/profile — ваш профиль"
         )
         return
-    
+
     await message.answer(
-        "👋 Привет! Я помощник для персонального обучения.\n\n"
-        "Задам несколько вопросов, чтобы адаптировать материал под тебя (~2 мин).\n\n"
-        "Как тебя зовут?"
+        "👋 Здравствуйте! Я персональный помощник для системного развития.\n\n"
+        "Задам несколько вопросов, чтобы адаптировать материал под вас (~2 мин).\n\n"
+        "Как вас зовут?"
     )
     await state.set_state(OnboardingStates.waiting_for_name)
 
@@ -1043,7 +1261,7 @@ async def on_name(message: Message, state: FSMContext):
     await update_intern(message.chat.id, name=message.text.strip())
     await message.answer(
         f"Приятно познакомиться, {message.text.strip()}!\n\n"
-        "Чем ты занимаешься?\n\n"
+        "Чем вы занимаетесь?\n\n"
         "_Например: разработчик в IT-компании, студент экономфака, маркетолог в стартапе_",
         parse_mode="Markdown"
     )
@@ -1053,8 +1271,9 @@ async def on_name(message: Message, state: FSMContext):
 async def on_occupation(message: Message, state: FSMContext):
     await update_intern(message.chat.id, occupation=message.text.strip())
     await message.answer(
-        "Расскажи о своих интересах и хобби.\n\n"
-        "_Это поможет приводить близкие тебе примеры._",
+        "Расскажите о своих интересах и хобби.\n\n"
+        "_Например: технологии, космос, кулинария, спорт, музыка, путешествия_\n\n"
+        "_Это поможет приводить близкие вам примеры._",
         parse_mode="Markdown"
     )
     await state.set_state(OnboardingStates.waiting_for_interests)
@@ -1064,8 +1283,8 @@ async def on_interests(message: Message, state: FSMContext):
     interests = [i.strip() for i in message.text.replace(',', ';').split(';') if i.strip()]
     await update_intern(message.chat.id, interests=interests)
     await message.answer(
-        "*Что для тебя по-настоящему важно в жизни?*\n\n"
-        "_Это поможет мне добавлять мотивационные блоки, которые тебя зацепят._",
+        "*Что для вас по-настоящему важно в жизни?*\n\n"
+        "_Это поможет мне добавлять мотивационные блоки, которые вас зацепят._",
         parse_mode="Markdown"
     )
     await state.set_state(OnboardingStates.waiting_for_motivation)
@@ -1074,8 +1293,8 @@ async def on_interests(message: Message, state: FSMContext):
 async def on_motivation(message: Message, state: FSMContext):
     await update_intern(message.chat.id, motivation=message.text.strip())
     await message.answer(
-        "*Что хочешь изменить* в своей жизни или работе?\n\n"
-        "_Это определит, как я буду персонализировать материалы под тебя._",
+        "*Что хотите изменить* в своей жизни или работе?\n\n"
+        "_Это определит, как я буду персонализировать материалы под вас._",
         parse_mode="Markdown"
     )
     await state.set_state(OnboardingStates.waiting_for_goals)
@@ -1084,7 +1303,7 @@ async def on_motivation(message: Message, state: FSMContext):
 async def on_goals(message: Message, state: FSMContext):
     await update_intern(message.chat.id, goals=message.text.strip())
     await message.answer(
-        "Сколько минут готов уделять изучению одной темы?\n\n"
+        "Сколько минут готовы уделять изучению одной темы?\n\n"
         "_Совет: лучше начать с малого и постепенно увеличивать. "
         "5-10 минут каждый день эффективнее, чем 25 минут раз в неделю._",
         parse_mode="Markdown",
@@ -1099,7 +1318,7 @@ async def on_duration(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
         "Во сколько напоминать о новой теме?\n\n"
-        "_Напиши время в формате ЧЧ:ММ (например: 09:00)_\n"
+        "_Напишите время в формате ЧЧ:ММ (например: 09:00)_\n"
         "_Часовой пояс: UTC+3 (Москва)_",
         parse_mode="Markdown"
     )
@@ -1124,7 +1343,7 @@ async def on_schedule(message: Message, state: FSMContext):
         "Марафон длится *14 дней*. Каждый день — 2 темы:\n"
         "• *Теория* — материал + вопрос для размышления\n"
         "• *Практика* — задание + рабочий продукт\n\n"
-        "Выбери дату старта:",
+        "Выберите дату старта:",
         parse_mode="Markdown",
         reply_markup=kb_marathon_start()
     )
@@ -1152,7 +1371,7 @@ async def on_start_date(callback: CallbackQuery, state: FSMContext):
     goals_short = intern['goals'][:100] + '...' if len(intern['goals']) > 100 else intern['goals']
 
     await callback.message.edit_text(
-        f"📋 *Твой профиль:*\n\n"
+        f"📋 *Ваш профиль:*\n\n"
         f"👤 *Имя:* {intern['name']}\n"
         f"💼 *Занятие:* {intern['occupation']}\n"
         f"🎨 *Интересы:* {interests_str}\n\n"
@@ -1207,7 +1426,7 @@ async def on_confirm(callback: CallbackQuery, state: FSMContext):
         f"➡️ *Напоминания*\n\n"
         f"⏰ Буду напоминать в *{intern['schedule_time']}* каждый день.\n\n"
         f"{start_msg}\n\n"
-        f"{'Готов начать?' if can_start_now else 'Жду тебя в день старта!'}",
+        f"{'Готовы начать?' if can_start_now else 'Жду вас в день старта!'}",
         parse_mode="Markdown",
         reply_markup=kb_learn() if can_start_now else None
     )
@@ -1216,7 +1435,7 @@ async def on_confirm(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(OnboardingStates.confirming_profile, F.data == "restart")
 async def on_restart(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.edit_text("Давай заново!\n\nКак тебя зовут?")
+    await callback.message.edit_text("Давайте заново!\n\nКак вас зовут?")
     await state.set_state(OnboardingStates.waiting_for_name)
 
 # --- Обучение ---
@@ -1239,7 +1458,7 @@ async def cb_learn(callback: CallbackQuery, state: FSMContext):
 async def cb_later(callback: CallbackQuery):
     intern = await get_intern(callback.message.chat.id)
     await callback.answer()
-    await callback.message.edit_text(f"Жду тебя в {intern['schedule_time']}! Или /learn")
+    await callback.message.edit_text(f"Жду вас в {intern['schedule_time']}! Или /learn")
 
 @router.message(Command("progress"))
 async def cmd_progress(message: Message):
@@ -1333,8 +1552,8 @@ async def cmd_help(message: Message):
         "/help — показать эту справку\n\n"
         "*Как работает обучение:*\n"
         "1. Я отправляю персонализированный материал\n"
-        "2. Ты изучаешь его (5-25 мин)\n"
-        "3. Отвечаешь на вопрос для закрепления\n"
+        "2. Вы изучаете его (5-25 мин)\n"
+        "3. Отвечаете на вопрос для закрепления\n"
         "4. Тема засчитывается в прогресс\n\n"
         "Материал буду отправлять в заданное время или по /learn\n\n"
         "🔗 [Мастерская инженеров-менеджеров](https://system-school.ru/)\n\n"
@@ -1348,7 +1567,7 @@ async def cmd_help(message: Message):
 async def cmd_update(message: Message, state: FSMContext):
     intern = await get_intern(message.chat.id)
     if not intern['onboarding_completed']:
-        await message.answer("Сначала пройди онбординг: /start")
+        await message.answer("Сначала пройдите онбординг: /start")
         return
 
     duration = STUDY_DURATIONS.get(str(intern['study_duration']), {})
@@ -1379,7 +1598,7 @@ async def cmd_update(message: Message, state: FSMContext):
         f"{bloom['emoji']} Уровень: {bloom['short_name']}\n"
         f"🗓 Старт марафона: {marathon_start_str} (день {marathon_day})\n"
         f"⏰ Напоминание в {intern['schedule_time']}\n\n"
-        f"*Что хочешь обновить?*",
+        f"*Что хотите обновить?*",
         parse_mode="Markdown",
         reply_markup=kb_update_profile()
     )
@@ -1390,8 +1609,8 @@ async def on_upd_name(callback: CallbackQuery, state: FSMContext):
     intern = await get_intern(callback.message.chat.id)
     await callback.answer()
     await callback.message.edit_text(
-        f"👤 *Текущее имя:* {intern['name']}\n\n"
-        "Как тебя зовут?",
+        f"👤 *Ваше имя:* {intern['name']}\n\n"
+        "Как вас зовут?",
         parse_mode="Markdown"
     )
     await state.set_state(UpdateStates.updating_name)
@@ -1401,8 +1620,8 @@ async def on_upd_occupation(callback: CallbackQuery, state: FSMContext):
     intern = await get_intern(callback.message.chat.id)
     await callback.answer()
     await callback.message.edit_text(
-        f"💼 *Текущее занятие:* {intern.get('occupation', '') or 'не указано'}\n\n"
-        "Чем ты занимаешься?",
+        f"💼 *Ваше занятие:* {intern.get('occupation', '') or 'не указано'}\n\n"
+        "Чем вы занимаетесь?",
         parse_mode="Markdown"
     )
     await state.set_state(UpdateStates.updating_occupation)
@@ -1413,8 +1632,9 @@ async def on_upd_interests(callback: CallbackQuery, state: FSMContext):
     interests_str = ', '.join(intern['interests']) if intern['interests'] else 'не указаны'
     await callback.answer()
     await callback.message.edit_text(
-        f"🎨 *Текущие интересы:* {interests_str}\n\n"
-        "Расскажи о своих интересах и хобби:",
+        f"🎨 *Ваши интересы:* {interests_str}\n\n"
+        "_Например: технологии, космос, кулинария, спорт, музыка, путешествия_\n\n"
+        "Расскажите о своих интересах и хобби:",
         parse_mode="Markdown"
     )
     await state.set_state(UpdateStates.updating_interests)
@@ -1425,7 +1645,7 @@ async def on_upd_motivation(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
         f"💫 *Что сейчас важно:*\n{intern.get('motivation', '') or 'не указано'}\n\n"
-        "Что для тебя по-настоящему важно в жизни?",
+        "Что для вас по-настоящему важно в жизни?",
         parse_mode="Markdown"
     )
     await state.set_state(UpdateStates.updating_motivation)
@@ -1435,8 +1655,8 @@ async def on_upd_goals(callback: CallbackQuery, state: FSMContext):
     intern = await get_intern(callback.message.chat.id)
     await callback.answer()
     await callback.message.edit_text(
-        f"🎯 *Что хочешь изменить:*\n{intern['goals'] or 'не указано'}\n\n"
-        "Что хочешь изменить в своей жизни или работе?",
+        f"🎯 *Что хотите изменить:*\n{intern['goals'] or 'не указано'}\n\n"
+        "Что хотите изменить в своей жизни или работе?",
         parse_mode="Markdown"
     )
     await state.set_state(UpdateStates.updating_goals)
@@ -1448,7 +1668,7 @@ async def on_upd_duration(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
         f"⏱ *Текущее время:* {duration.get('emoji', '')} {duration.get('name', '')}\n\n"
-        "Сколько минут готов уделять изучению одной темы?",
+        "Сколько минут готовы уделять изучению одной темы?",
         parse_mode="Markdown",
         reply_markup=kb_study_duration()
     )
@@ -1461,7 +1681,7 @@ async def on_upd_schedule(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"⏰ *Текущее время напоминания:* {intern['schedule_time']}\n\n"
         "Во сколько напоминать о новой теме?\n"
-        "_Напиши время в формате ЧЧ:ММ (например: 09:00)_\n"
+        "_Напишите время в формате ЧЧ:ММ (например: 09:00)_\n"
         "_Часовой пояс: UTC+3 (Москва)_",
         parse_mode="Markdown"
     )
@@ -1473,10 +1693,10 @@ async def on_upd_bloom(callback: CallbackQuery, state: FSMContext):
     bloom = BLOOM_LEVELS.get(intern['bloom_level'], BLOOM_LEVELS[1])
     await callback.answer()
     await callback.message.edit_text(
-        f"🎚 *Текущий уровень:* {bloom['emoji']} {bloom['short_name']} «{bloom['name']}»\n"
+        f"🎚 *Текущий уровень сложности:* {bloom['emoji']} {bloom['short_name']} «{bloom['name']}»\n"
         f"_{bloom['desc']}_\n\n"
         f"Пройдено тем на этом уровне: {intern['topics_at_current_bloom']}/{BLOOM_AUTO_UPGRADE_AFTER}\n\n"
-        "Выбери новый уровень сложности вопросов:",
+        "Выберите новый уровень сложности вопросов:",
         parse_mode="Markdown",
         reply_markup=kb_bloom_level()
     )
@@ -1516,7 +1736,7 @@ async def on_upd_marathon_start(callback: CallbackQuery, state: FSMContext):
         f"🗓 *Текущая дата старта:* {current_date_str}\n"
         f"*День марафона:* {marathon_day} из {MARATHON_DAYS}\n\n"
         f"⚠️ *Внимание:* изменение даты старта влияет на расчёт текущего дня марафона.\n\n"
-        f"Выбери новую дату старта:",
+        f"Выберите новую дату старта:",
         parse_mode="Markdown",
         reply_markup=kb_marathon_start()
     )
@@ -1551,7 +1771,7 @@ async def on_save_marathon_start(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(UpdateStates.choosing_field, F.data == "upd_cancel")
 async def on_upd_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.answer("Отменено")
-    await callback.message.edit_text("Хорошо! Можешь продолжить обучение: /learn")
+    await callback.message.edit_text("Хорошо! Можете продолжить обучение: /learn")
     await state.clear()
 
 @router.message(UpdateStates.updating_motivation)
@@ -1570,7 +1790,7 @@ async def on_save_goals(message: Message, state: FSMContext):
     await update_intern(message.chat.id, goals=message.text.strip())
     await message.answer(
         "✅ Обновлено!\n\n"
-        "Теперь материалы будут персонализированы под твои цели.\n\n"
+        "Теперь материалы будут персонализированы под ваши цели.\n\n"
         "/learn — продолжить обучение\n"
         "/update — обновить ещё что-то"
     )
@@ -1592,7 +1812,7 @@ async def on_save_occupation(message: Message, state: FSMContext):
     await update_intern(message.chat.id, occupation=message.text.strip())
     await message.answer(
         "✅ Занятие обновлено!\n\n"
-        "Теперь примеры будут из твоей области.\n\n"
+        "Теперь примеры будут из вашей области.\n\n"
         "/learn — продолжить обучение\n"
         "/update — обновить ещё что-то"
     )
@@ -1604,7 +1824,7 @@ async def on_save_interests(message: Message, state: FSMContext):
     await update_intern(message.chat.id, interests=interests)
     await message.answer(
         "✅ Интересы обновлены!\n\n"
-        "Теперь примеры будут ближе к твоим хобби.\n\n"
+        "Теперь примеры будут ближе к вашим хобби.\n\n"
         "/learn — продолжить обучение\n"
         "/update — обновить ещё что-то"
     )
@@ -1650,7 +1870,7 @@ async def on_answer(message: Message, state: FSMContext):
     intern = await get_intern(message.chat.id)
 
     if len(message.text.strip()) < 20:
-        await message.answer("Напиши подробнее (хотя бы 2-3 предложения)")
+        await message.answer("Напишите подробнее (хотя бы 2-3 предложения)")
         return
 
     # Сохраняем ответ
@@ -1689,7 +1909,7 @@ async def on_answer(message: Message, state: FSMContext):
     # Сообщение о повышении уровня
     upgrade_msg = ""
     if level_upgraded:
-        upgrade_msg = f"\n\n🎉 *Поздравляю!* Ты перешёл на *{bloom['short_name']} «{bloom['name']}»*!"
+        upgrade_msg = f"\n\n🎉 *Поздравляем!* Вы перешли на *{bloom['short_name']} «{bloom['name']}»*!"
 
     # Получаем информацию о следующей доступной теме
     updated_intern = {
@@ -1714,7 +1934,7 @@ async def on_answer(message: Message, state: FSMContext):
             f"✅ *Тема засчитана!*\n\n"
             f"{progress_bar(done, total)}\n"
             f"{bloom['short_name']}{upgrade_msg}{next_topic_hint}\n\n"
-            f"Хочешь дополнительный вопрос посложнее?",
+            f"Хотите дополнительный вопрос посложнее?",
             parse_mode="Markdown",
             reply_markup=kb_bonus_question()
         )
@@ -1748,15 +1968,16 @@ async def on_bonus_yes(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("⏳ Генерирую вопрос посложнее...")
 
     # Генерируем вопрос следующего уровня
+    marathon_day = get_marathon_day(intern)
     next_level = min(intern['bloom_level'] + 1, 3)
-    question = await claude.generate_question(topic, intern, bloom_level=next_level)
+    question = await claude.generate_question(topic, intern, marathon_day=marathon_day, bloom_level=next_level)
 
     bloom = BLOOM_LEVELS.get(next_level, BLOOM_LEVELS[1])
 
     await callback.message.answer(
         f"🚀 *Бонусный вопрос* ({bloom['short_name']})\n\n"
         f"{question}\n\n"
-        f"Напиши ответ 👇",
+        f"Напишите ответ 👇",
         parse_mode="Markdown"
     )
     await state.set_state(LearningStates.waiting_for_bonus_answer)
@@ -1775,7 +1996,7 @@ async def on_bonus_no(callback: CallbackQuery, state: FSMContext):
 async def on_bonus_answer(message: Message, state: FSMContext):
     """Обработка ответа на бонусный вопрос"""
     if len(message.text.strip()) < 20:
-        await message.answer("Напиши подробнее (хотя бы 2-3 предложения)")
+        await message.answer("Напишите подробнее (хотя бы 2-3 предложения)")
         return
 
     intern = await get_intern(message.chat.id)
@@ -1796,7 +2017,7 @@ async def on_bonus_answer(message: Message, state: FSMContext):
 
     await message.answer(
         f"🌟 *Отлично!* Бонусный вопрос засчитан!\n\n"
-        f"Ты тренируешь навыки *{bloom['short_name']}* и выше.{next_topic_hint}\n\n"
+        f"Вы тренируете навыки *{bloom['short_name']}* и выше.{next_topic_hint}\n\n"
         f"/learn — следующая тема",
         parse_mode="Markdown"
     )
@@ -1830,7 +2051,7 @@ async def on_work_product(message: Message, state: FSMContext):
     intern = await get_intern(message.chat.id)
 
     if len(message.text.strip()) < 3:
-        await message.answer("Напиши хотя бы название рабочего продукта (например: «Список в заметках»)")
+        await message.answer("Напишите хотя бы название рабочего продукта (например: «Список в заметках»)")
         return
 
     # Сохраняем ответ (рабочий продукт)
@@ -1867,7 +2088,7 @@ async def on_work_product(message: Message, state: FSMContext):
             f"✅ Практика выполнена\n"
             f"📝 РП: {message.text.strip()}\n\n"
             f"{progress_bar(done, total)}\n\n"
-            f"Отличная работа! Возвращайся завтра за новыми темами.\n\n"
+            f"Отличная работа! Возвращайтесь завтра за новыми темами.\n\n"
             f"/progress — посмотреть прогресс",
             parse_mode="Markdown"
         )
@@ -1919,7 +2140,7 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
                 chat_id,
                 f"🗓 Марафон ещё не начался.\n\n"
                 f"Старт: *{start_date.strftime('%d.%m.%Y')}*\n\n"
-                f"Если хочешь изменить дату — /update",
+                f"Если хотите изменить дату — /update",
                 parse_mode="Markdown"
             )
             return
@@ -1931,8 +2152,8 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
                 chat_id,
                 f"🚀 *Марафон запущен!*\n\n"
                 f"Старт: *{today.strftime('%d.%m.%Y')}* (сегодня)\n\n"
-                f"Если хочешь изменить дату старта — /update\n\n"
-                f"А сейчас — твоя первая тема! 👇",
+                f"Если хотите изменить дату старта — /update\n\n"
+                f"А сейчас — ваша первая тема! 👇",
                 parse_mode="Markdown"
             )
             # Обновляем данные
@@ -1944,10 +2165,10 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
     if topics_today >= MAX_TOPICS_PER_DAY:
         await bot.send_message(
             chat_id,
-            f"🎯 *Сегодня ты уже прошёл {topics_today} темы — это максимум!*\n\n"
-            f"Лимит: *{MAX_TOPICS_PER_DAY} темы в день* (можно нагнать 1 день)\n\n"
+            f"🎯 *Сегодня вы уже прошли {topics_today} тем — это максимум!*\n\n"
+            f"Лимит: *{MAX_TOPICS_PER_DAY} тем в день* (можно нагнать 1 день)\n\n"
             f"Регулярность > Интенсивность\n\n"
-            f"Возвращайся завтра! Или в *{intern['schedule_time']}* я сам напомню.",
+            f"Возвращайтесь завтра! Или в *{intern['schedule_time']}* я сам напомню.",
             parse_mode="Markdown"
         )
         return
@@ -1982,31 +2203,34 @@ async def send_topic(chat_id: int, state: FSMContext, bot: Bot):
                 f"✅ *День {marathon_day} завершён!*\n\n"
                 f"Пройдено тем: {completed_count}/{total_topics}\n\n"
                 f"Следующие темы откроются завтра.\n"
-                f"Возвращайся в *{intern['schedule_time']}*!",
+                f"Возвращайтесь в *{intern['schedule_time']}*!",
                 parse_mode="Markdown"
             )
             return
 
         if completed_count >= total_topics:
-            # Марафон завершён
+            # Марафон пройден — короткое сообщение (пользователь сам запросил /learn)
+            weeks = get_sections_progress(intern['completed_topics'])
+            weeks_text = ""
+            for i, week in enumerate(weeks):
+                pct = int((week['completed'] / week['total']) * 100) if week['total'] > 0 else 0
+                bar = '█' * (pct // 10) + '░' * (10 - pct // 10)
+                weeks_text += f"{'1️⃣' if i == 0 else '2️⃣'} Неделя {i + 1}: {bar} {week['completed']}/{week['total']} ✅\n"
+
             await bot.send_message(
                 chat_id,
-                "🎉 *Поздравляю! Марафон пройден!*\n\n"
-                f"Ты прошёл все *{MARATHON_DAYS} дней* и *{total_topics} тем*.\n\n"
-                "Теперь ты — *Практикующий ученик* с базовыми практиками:\n"
-                "• Слоты саморазвития\n"
-                "• Трекер практик\n"
-                "• Мимолётные заметки\n"
-                "• Рабочие продукты\n\n"
-                "Хочешь продолжить развитие?\n"
-                "Заходи в [Мастерскую инженеров-менеджеров](https://system-school.ru/)!",
+                "🎉 *Поздравляем! Марафон пройден!*\n\n"
+                f"Вы прошли все *{MARATHON_DAYS} дней* и *{total_topics} тем*.\n\n"
+                f"📊 *Ваша статистика:*\n"
+                f"{weeks_text}\n"
+                "Заходите в [Мастерскую](https://system-school.ru/) для продвинутых программ.",
                 parse_mode="Markdown"
             )
             return
 
         await bot.send_message(
             chat_id,
-            "⚠️ Что-то пошло не так. Попробуй /learn ещё раз.",
+            "⚠️ Что-то пошло не так. Попробуйте /learn ещё раз.",
             parse_mode="Markdown"
         )
         return
@@ -2027,8 +2251,8 @@ async def send_theory_topic(chat_id: int, topic: dict, intern: dict, state: FSMC
 
     await bot.send_message(chat_id, "⏳ Генерирую персональный материал...")
 
-    content = await claude.generate_content(topic, intern, mcp_client=mcp_guides, knowledge_client=mcp_knowledge)
-    question = await claude.generate_question(topic, intern)
+    content = await claude.generate_content(topic, intern, marathon_day=marathon_day, mcp_client=mcp_guides, knowledge_client=mcp_knowledge)
+    question = await claude.generate_question(topic, intern, marathon_day=marathon_day)
 
     header = (
         f"📚 *День {marathon_day} — Теория*\n"
@@ -2049,7 +2273,7 @@ async def send_theory_topic(chat_id: int, topic: dict, intern: dict, state: FSMC
         chat_id,
         f"💭 *Вопрос для размышления* ({bloom['short_name']})\n\n"
         f"{question}\n\n"
-        f"_Напишите ответ в сообщении. Он не проверяется автоматически — "
+        f"_Напишите ответ в сообщении. Он не проверяется — "
         f"после получения любого ответа тема считается пройденной._",
         parse_mode="Markdown",
         reply_markup=kb_skip_topic()
@@ -2063,7 +2287,7 @@ async def send_practice_topic(chat_id: int, topic: dict, intern: dict, state: FS
     marathon_day = get_marathon_day(intern)
 
     # Генерируем краткое введение
-    intro = await claude.generate_practice_intro(topic, intern)
+    intro = await claude.generate_practice_intro(topic, intern, marathon_day=marathon_day)
 
     task = topic.get('task', '')
     work_product = topic.get('work_product', '')
@@ -2093,10 +2317,10 @@ async def send_practice_topic(chat_id: int, topic: dict, intern: dict, state: FS
     # Запрос рабочего продукта
     await bot.send_message(
         chat_id,
-        "📝 *Когда выполнишь задание:*\n\n"
-        "Напиши название своего рабочего продукта.\n\n"
+        "📝 *Когда выполните задание:*\n\n"
+        "Напишите название своего рабочего продукта.\n\n"
         f"_Например: «{examples[0] if examples else work_product}»_\n\n"
-        "_Проверки нет — просто напиши что сделал, и практика засчитается._",
+        "_Проверки нет — просто напишите, что сделали, и практика засчитается._",
         parse_mode="Markdown",
         reply_markup=kb_submit_work_product()
     )
@@ -2133,12 +2357,29 @@ async def send_scheduled_topic(chat_id: int, bot: Bot):
     if not topic:
         # Проверяем, все ли темы пройдены
         total = get_total_topics()
-        completed = len(intern['completed_topics'])
-        if completed >= total:
+        completed_count = len(intern['completed_topics'])
+        if completed_count >= total:
+            # Марафон пройден — полное сообщение (автоматическая отправка по расписанию)
+            weeks = get_sections_progress(intern['completed_topics'])
+            weeks_text = ""
+            for i, week in enumerate(weeks):
+                pct = int((week['completed'] / week['total']) * 100) if week['total'] > 0 else 0
+                bar = '█' * (pct // 10) + '░' * (10 - pct // 10)
+                weeks_text += f"{'1️⃣' if i == 0 else '2️⃣'} Неделя {i + 1}: {bar} {week['completed']}/{week['total']} ✅\n"
+
             await bot.send_message(
                 chat_id,
-                "🎉 *Марафон завершён!*\n\n"
-                "Заходи в [Мастерскую](https://system-school.ru/) для продвинутых программ.",
+                "🎉 *Поздравляем! Марафон пройден!*\n\n"
+                f"Вы прошли все *{MARATHON_DAYS} дней* и *{total} тем*.\n\n"
+                f"📊 *Ваша статистика:*\n"
+                f"{weeks_text}\n"
+                "Теперь вы — *Практикующий ученик* с базовыми практиками:\n"
+                "• Слоты саморазвития\n"
+                "• Трекер практик\n"
+                "• Мимолётные заметки\n"
+                "• Рабочие продукты\n\n"
+                "Хотите продолжить развитие?\n"
+                "Заходите в [Мастерскую инженеров-менеджеров](https://system-school.ru/)!",
                 parse_mode="Markdown"
             )
         return
@@ -2205,7 +2446,7 @@ async def send_reminder(chat_id: int, reminder_type: str, bot: Bot):
         await bot.send_message(
             chat_id,
             f"⏰ *Напоминание*\n\n"
-            f"День {marathon_day} марафона ждёт тебя!\n\n"
+            f"День {marathon_day} марафона ждёт вас!\n\n"
             f"Всего 2 темы на сегодня: теория и практика.\n\n"
             f"/learn — начать",
             parse_mode="Markdown"
@@ -2215,7 +2456,7 @@ async def send_reminder(chat_id: int, reminder_type: str, bot: Bot):
             chat_id,
             f"🔔 *Последнее напоминание*\n\n"
             f"День {marathon_day} ещё не начат.\n\n"
-            f"Помни: *регулярность > интенсивность*.\n"
+            f"Помните: *регулярность > интенсивность*.\n"
             f"Даже 15 минут сегодня — это прогресс.\n\n"
             f"/learn — начать",
             parse_mode="Markdown"
@@ -2287,7 +2528,7 @@ async def on_unknown_callback(callback: CallbackQuery, state: FSMContext):
     """Обработка неизвестных callback-запросов (истёкшие кнопки и т.д.)"""
     logger.warning(f"Unhandled callback: {callback.data} from user {callback.from_user.id}")
     await callback.answer(
-        "Кнопка устарела. Используй /learn для продолжения.",
+        "Кнопка устарела. Используйте /learn для продолжения.",
         show_alert=True
     )
 
@@ -2307,12 +2548,12 @@ async def on_unknown_message(message: Message, state: FSMContext):
     if not intern:
         # Новый пользователь
         await message.answer(
-            "Привет! Для начала используй /start"
+            "Здравствуйте! Для начала используйте /start"
         )
     else:
         # Зарегистрированный пользователь
         await message.answer(
-            "Используй команды:\n"
+            "Используйте команды:\n"
             "/learn — получить тему\n"
             "/progress — мой прогресс\n"
             "/profile — мой профиль\n"
