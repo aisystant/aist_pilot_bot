@@ -162,6 +162,8 @@ Telegram-бот [@aist_track_bot](https://t.me/aist_track_bot) с персона
 
 ## 6. Тестировщикам
 
+> **[docs/testing-scenarios.md](docs/testing-scenarios.md)** — Полный чек-лист сценариев тестирования (121 сценарий)
+
 ### Что тестировать в первую очередь
 
 1. **Онбординг** — пройдите регистрацию с `/start`, проверьте все шаги
@@ -245,6 +247,7 @@ aist_track_bot/
 ### Документация
 
 - **[docs/ontology.md](docs/ontology.md)** — Терминология и онтология системы
+- **[docs/testing-scenarios.md](docs/testing-scenarios.md)** — Сценарии тестирования
 - **[CLAUDE.md](CLAUDE.md)** — Инструкции для ИИ-ассистентов
 
 ---
