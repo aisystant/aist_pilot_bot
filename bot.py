@@ -36,6 +36,8 @@ import aiohttp
 import asyncpg
 
 from locales import t, detect_language, get_language_name, SUPPORTED_LANGUAGES
+from core.intent import detect_intent, IntentType
+from engines.shared import handle_question
 
 # ============= КОНФИГУРАЦИЯ =============
 
@@ -2790,13 +2792,14 @@ async def on_unknown_callback(callback: CallbackQuery, state: FSMContext):
 async def on_unknown_message(message: Message, state: FSMContext):
     """Обработка сообщений вне FSM-состояний"""
     current_state = await state.get_state()
+    text = message.text or ''
 
     # Если пользователь в каком-то состоянии — логируем для отладки
     if current_state:
-        logger.warning(f"Unhandled message in state {current_state} from user {message.chat.id}: {message.text[:50] if message.text else '[no text]'}")
+        logger.warning(f"Unhandled message in state {current_state} from user {message.chat.id}: {text[:50] if text else '[no text]'}")
         return
 
-    # Пользователь не в FSM-состоянии — подсказываем команды
+    # Пользователь не в FSM-состоянии
     intern = await get_intern(message.chat.id)
 
     if not intern:
@@ -2804,14 +2807,45 @@ async def on_unknown_message(message: Message, state: FSMContext):
         await message.answer(
             "Здравствуйте! Для начала используйте /start"
         )
-    else:
-        # Зарегистрированный пользователь
+        return
+
+    # Определяем намерение пользователя
+    intent = detect_intent(text, context={'mode': intern.get('mode')})
+    lang = intern.get('language', 'ru') or 'ru'
+
+    if intent.type == IntentType.QUESTION:
+        # Пользователь задаёт вопрос — отвечаем через Claude + MCP
+        await message.answer(t('loading.processing', lang))
+
+        try:
+            answer, sources = await handle_question(
+                question=text,
+                intern=intern,
+                context_topic=None
+            )
+
+            response = answer
+            if sources:
+                response += "\n\n📚 _Источники: " + ", ".join(sources[:2]) + "_"
+
+            await message.answer(response, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Ошибка при обработке вопроса: {e}")
+            await message.answer(t('errors.try_again', lang))
+
+    elif intent.type == IntentType.TOPIC_REQUEST:
+        # Пользователь хочет тему — перенаправляем на /learn
         await message.answer(
-            "Используйте команды:\n"
-            "/learn — получить тему\n"
-            "/progress — мой прогресс\n"
-            "/profile — мой профиль\n"
-            "/help — справка"
+            "Для получения темы используйте /learn"
+        )
+
+    else:
+        # Не распознано — показываем команды
+        await message.answer(
+            t('commands.learn', lang) + "\n" +
+            t('commands.progress', lang) + "\n" +
+            t('commands.profile', lang) + "\n" +
+            t('commands.help', lang)
         )
 
 # ============= ЗАПУСК =============
