@@ -1297,7 +1297,7 @@ def kb_update_profile(lang: str = 'ru') -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="🎯 " + t('buttons.goals', lang), callback_data="upd_goals")],
         [InlineKeyboardButton(text="⏱ " + t('buttons.duration', lang), callback_data="upd_duration"),
          InlineKeyboardButton(text="⏰ " + t('buttons.schedule', lang), callback_data="upd_schedule")],
-        [InlineKeyboardButton(text="🎚 " + t('buttons.difficulty', lang), callback_data="upd_bloom"),
+        [InlineKeyboardButton(text="📊 " + t('buttons.difficulty', lang), callback_data="upd_bloom"),
          InlineKeyboardButton(text="🤖 " + t('buttons.bot_mode', lang), callback_data="upd_mode")],
         [InlineKeyboardButton(text="🌐 Language (en, es, ru)", callback_data="upd_language")],
         [InlineKeyboardButton(text="❌ " + t('buttons.cancel', lang), callback_data="upd_cancel")]
@@ -1379,7 +1379,9 @@ async def cmd_start(message: Message, state: FSMContext):
             t('welcome.returning', lang, name=intern['name']) + "\n\n" +
             t('commands.learn', lang) + "\n" +
             t('commands.progress', lang) + "\n" +
-            t('commands.profile', lang)
+            t('commands.profile', lang) + "\n" +
+            t('commands.update', lang) + "\n" +
+            t('commands.mode', lang)
         )
         return
 
