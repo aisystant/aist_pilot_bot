@@ -35,12 +35,56 @@ async def get_user_lang(chat_id: int) -> str:
 feed_router = Router(name="feed")
 
 
+async def show_feed_menu(message: Message, engine: FeedEngine, state: FSMContext):
+    """Показывает главное меню режима Лента с двумя кнопками"""
+    try:
+        chat_id = message.chat.id
+        lang = await get_user_lang(chat_id)
+
+        week = await engine.get_current_week()
+        if not week:
+            await message.answer("Используйте /feed для запуска режима Лента.")
+            return
+
+        topics = week.get('accepted_topics', [])
+        current_day = week.get('current_day', 1)
+
+        # Формируем текст меню
+        text = f"📚 *{t('feed.menu_title', lang)}*\n\n"
+        text += f"{t('feed.week_progress', lang, current=current_day, total=len(topics))}\n"
+
+        # Показываем текущую тему
+        if current_day <= len(topics):
+            text += f"\n📖 Сегодня: *{topics[current_day - 1]}*"
+
+        # Кнопки
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"📖 {t('buttons.get_digest', lang)}",
+                callback_data="feed_get_digest"
+            )],
+            [InlineKeyboardButton(
+                text=f"📋 {t('buttons.topics_menu', lang)}",
+                callback_data="feed_topics_menu"
+            )]
+        ])
+
+        await state.clear()
+        await message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Ошибка в show_feed_menu: {e}\n{traceback.format_exc()}")
+        await message.answer(t('errors.try_again', await get_user_lang(message.chat.id)))
+
+
 class FeedStates(StatesGroup):
     """FSM состояния для режима Лента"""
     choosing_topics = State()       # Выбор тем на неделю
     reading_content = State()       # Читает контент сессии
     waiting_fixation = State()      # Ожидание фиксации
     choosing_tomorrow = State()     # Выбор/изменение темы на завтра
+    editing_topic = State()         # Редактирование конкретной темы
 
 
 # ==================== КОМАНДЫ ====================
@@ -101,9 +145,9 @@ async def cmd_feed(message: Message, state: FSMContext):
                 await show_topic_selection(message, topics, state)
 
         else:
-            # Есть активная неделя - показываем сессию
-            logger.info(f"Показываем сессию для {chat_id}")
-            await show_today_session(message, engine, state)
+            # Есть активная неделя - показываем меню Ленты
+            logger.info(f"Показываем меню Ленты для {chat_id}")
+            await show_feed_menu(message, engine, state)
 
     except Exception as e:
         import traceback
@@ -380,6 +424,186 @@ async def feed_start_scheduled(callback: CallbackQuery, state: FSMContext):
     await callback.answer(t('feed.topic_saved', lang))
 
 
+# ==================== МЕНЮ ЛЕНТЫ ====================
+
+@feed_router.callback_query(F.data == "feed_get_digest")
+async def feed_get_digest(callback: CallbackQuery, state: FSMContext):
+    """Получить дайджест - показывает текущую сессию или создаёт новую"""
+    chat_id = callback.message.chat.id
+    lang = await get_user_lang(chat_id)
+
+    await callback.answer()
+
+    # Показываем индикатор загрузки
+    await callback.message.edit_text(t('loading.generating_content', lang))
+
+    # Генерируем и показываем контент
+    engine = FeedEngine(chat_id)
+    await show_today_session(callback.message, engine, state)
+
+
+@feed_router.callback_query(F.data == "feed_topics_menu")
+async def feed_topics_menu(callback: CallbackQuery, state: FSMContext):
+    """Показывает меню тем с кнопками редактирования"""
+    chat_id = callback.message.chat.id
+    lang = await get_user_lang(chat_id)
+
+    try:
+        engine = FeedEngine(chat_id)
+        week = await engine.get_current_week()
+
+        if not week:
+            await callback.answer(t('errors.try_again', lang), show_alert=True)
+            return
+
+        topics = week.get('accepted_topics', [])
+        current_day = week.get('current_day', 1)
+
+        # Формируем текст с темами
+        text = f"📋 *{t('feed.topics_menu_title', lang)}*\n\n"
+        text += f"{t('feed.week_progress', lang, current=current_day, total=len(topics))}\n\n"
+
+        for i, topic in enumerate(topics, 1):
+            if i < current_day:
+                mark = "✅"  # Пройдено
+            elif i == current_day:
+                mark = "📖"  # Сегодня
+            else:
+                mark = "⏳"  # Предстоит
+
+            text += f"{mark} *День {i}:* {topic}\n"
+
+        text += f"\n_{t('feed.topics_edit_hint', lang)}_"
+
+        # Кнопки для редактирования каждой темы (только предстоящие)
+        buttons = []
+        for i, topic in enumerate(topics, 1):
+            if i >= current_day:  # Можно редактировать текущую и будущие
+                short_title = topic[:25] + "..." if len(topic) > 25 else topic
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"День {i}: {short_title}",
+                        callback_data=f"feed_view_topic_{i}"
+                    ),
+                    InlineKeyboardButton(
+                        text=t('buttons.edit_topic', lang),
+                        callback_data=f"feed_edit_topic_{i}"
+                    )
+                ])
+
+        # Кнопка "Назад"
+        buttons.append([
+            InlineKeyboardButton(
+                text=t('buttons.back_to_menu', lang),
+                callback_data="feed_back_to_menu"
+            )
+        ])
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        await callback.answer()
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Ошибка в feed_topics_menu: {e}\n{traceback.format_exc()}")
+        await callback.answer(t('errors.try_again', lang), show_alert=True)
+
+
+@feed_router.callback_query(F.data.startswith("feed_edit_topic_"))
+async def feed_edit_topic(callback: CallbackQuery, state: FSMContext):
+    """Начинает редактирование темы для указанного дня"""
+    chat_id = callback.message.chat.id
+    lang = await get_user_lang(chat_id)
+
+    # Извлекаем номер дня
+    day = int(callback.data.replace("feed_edit_topic_", ""))
+
+    # Сохраняем день в state
+    await state.update_data(editing_day=day)
+    await state.set_state(FeedStates.editing_topic)
+
+    # Просим ввести новую тему
+    text = f"✏️ {t('feed.enter_new_topic', lang, day=day)}"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=t('buttons.cancel', lang),
+            callback_data="feed_topics_menu"
+        )]
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@feed_router.callback_query(F.data.startswith("feed_view_topic_"))
+async def feed_view_topic(callback: CallbackQuery, state: FSMContext):
+    """Просмотр темы - просто информирует"""
+    await callback.answer("Нажмите ✏️ для редактирования")
+
+
+@feed_router.message(FeedStates.editing_topic, F.text.func(lambda t: not t.startswith('/')))
+async def handle_topic_edit(message: Message, state: FSMContext):
+    """Обрабатывает ввод новой темы"""
+    try:
+        chat_id = message.chat.id
+        lang = await get_user_lang(chat_id)
+        text = message.text.strip()
+
+        if len(text) < 3:
+            await message.answer("Введите название темы (минимум 3 символа).")
+            return
+
+        # Получаем день из state
+        data = await state.get_data()
+        day = data.get('editing_day', 1)
+
+        # Капитализируем и обрезаем
+        words = text.split()[:7]
+        new_topic = ' '.join(words).capitalize()
+
+        # Обновляем тему
+        engine = FeedEngine(chat_id)
+        success = await engine.update_tomorrow_topic(day, new_topic)
+
+        if success:
+            await message.answer(
+                f"✅ {t('feed.topic_updated', lang, day=day)}\n➡️ *{new_topic}*",
+                parse_mode="Markdown"
+            )
+        else:
+            await message.answer(t('errors.try_again', lang))
+
+        await state.clear()
+
+        # Показываем меню Ленты
+        await show_feed_menu(message, engine, state)
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Ошибка в handle_topic_edit: {e}\n{traceback.format_exc()}")
+        await message.answer(t('errors.try_again', await get_user_lang(message.chat.id)))
+        await state.clear()
+
+
+@feed_router.callback_query(F.data == "feed_back_to_menu")
+async def feed_back_to_menu(callback: CallbackQuery, state: FSMContext):
+    """Возврат в главное меню Ленты"""
+    chat_id = callback.message.chat.id
+
+    await callback.answer()
+
+    engine = FeedEngine(chat_id)
+
+    # Удаляем старое сообщение и показываем меню
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    await show_feed_menu(callback.message, engine, state)
+
+
 async def show_today_session(message: Message, engine: FeedEngine, state: FSMContext):
     """Показывает сегодняшнюю сессию"""
     try:
@@ -415,6 +639,9 @@ async def show_today_session(message: Message, engine: FeedEngine, state: FSMCon
 
         # Получаем язык для кнопок
         lang = await get_user_lang(message.chat.id)
+
+        # Добавляем подсказку о возможности задать вопрос
+        text += f"\n\n—\n💡 _{t('feed.ask_details', lang)}_"
 
         # Кнопки: фиксация и "что дальше?"
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -498,7 +725,7 @@ async def handle_feed_question(message: Message, state: FSMContext):
 
 @feed_router.callback_query(F.data == "feed_whats_next")
 async def show_whats_next(callback: CallbackQuery, state: FSMContext):
-    """Показывает предстоящие темы недели"""
+    """Показывает предстоящие темы недели с возможностью редактирования"""
     chat_id = callback.message.chat.id
     lang = await get_user_lang(chat_id)
 
@@ -514,9 +741,8 @@ async def show_whats_next(callback: CallbackQuery, state: FSMContext):
         current_day = week.get('current_day', 1)
 
         # Формируем список тем
-        text = f"📋 *{t('feed.whats_next', lang)}*\n\n"
+        text = f"📋 *{t('feed.topics_menu_title', lang)}*\n\n"
         text += f"{t('feed.week_progress', lang, current=current_day, total=len(topics))}\n\n"
-        text += f"*{t('feed.upcoming_topics', lang)}*\n"
 
         for i, topic in enumerate(topics, 1):
             if i < current_day:
@@ -526,9 +752,28 @@ async def show_whats_next(callback: CallbackQuery, state: FSMContext):
             else:
                 mark = "⏳"  # Предстоит
 
-            text += f"{mark} {i}. {topic}\n"
+            text += f"{mark} *День {i}:* {topic}\n"
 
-        await callback.message.answer(text, parse_mode="Markdown")
+        text += f"\n_{t('feed.topics_edit_hint', lang)}_"
+
+        # Кнопки для редактирования будущих тем
+        buttons = []
+        for i, topic in enumerate(topics, 1):
+            if i > current_day:  # Только будущие (текущий день уже показан)
+                short_title = topic[:25] + "..." if len(topic) > 25 else topic
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"День {i}: {short_title}",
+                        callback_data=f"feed_view_topic_{i}"
+                    ),
+                    InlineKeyboardButton(
+                        text=t('buttons.edit_topic', lang),
+                        callback_data=f"feed_edit_topic_{i}"
+                    )
+                ])
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
         await callback.answer()
 
     except Exception as e:
