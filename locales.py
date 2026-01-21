@@ -151,7 +151,11 @@ TRANSLATIONS = {
         'feed.keep_or_change': 'Оставить как есть — просто нажмите ✅\nИзменить — напишите номер или свою тему',
         'feed.topic_saved': 'Тема на завтра сохранена!',
         'feed.topic_changed': 'Тема на завтра изменена:',
+        'feed.whats_next': 'Что дальше?',
+        'feed.upcoming_topics': 'Предстоящие темы:',
+        'feed.week_progress': 'Прогресс недели: {current} из {total}',
         'buttons.keep_topic': 'Оставить как есть',
+        'buttons.write_fixation': 'Написать фиксацию',
     },
 
     'en': {
@@ -295,7 +299,11 @@ TRANSLATIONS = {
         'feed.keep_or_change': 'Keep as is — just press ✅\nChange — type a number or your own topic',
         'feed.topic_saved': 'Tomorrow\'s topic saved!',
         'feed.topic_changed': 'Tomorrow\'s topic changed:',
+        'feed.whats_next': "What's next?",
+        'feed.upcoming_topics': 'Upcoming topics:',
+        'feed.week_progress': 'Week progress: {current} of {total}',
         'buttons.keep_topic': 'Keep as is',
+        'buttons.write_fixation': 'Write fixation',
     },
 
     'es': {
@@ -439,7 +447,11 @@ TRANSLATIONS = {
         'feed.keep_or_change': 'Mantener así — solo presiona ✅\nCambiar — escribe un número o tu propio tema',
         'feed.topic_saved': '¡Tema de mañana guardado!',
         'feed.topic_changed': 'Tema de mañana cambiado:',
+        'feed.whats_next': '¿Qué sigue?',
+        'feed.upcoming_topics': 'Próximos temas:',
+        'feed.week_progress': 'Progreso semanal: {current} de {total}',
         'buttons.keep_topic': 'Mantener así',
+        'buttons.write_fixation': 'Escribir fijación',
     }
 }
 

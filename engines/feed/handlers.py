@@ -413,9 +413,13 @@ async def show_today_session(message: Message, engine: FeedEngine, state: FSMCon
         if content.get('reflection_prompt'):
             text += f"\n\n💭 *{content['reflection_prompt']}*"
 
-        # Кнопка для фиксации
+        # Получаем язык для кнопок
+        lang = await get_user_lang(message.chat.id)
+
+        # Кнопки: фиксация и "что дальше?"
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✍️ Написать фиксацию", callback_data="feed_fixation")]
+            [InlineKeyboardButton(text=f"✍️ {t('buttons.write_fixation', lang)}", callback_data="feed_fixation")],
+            [InlineKeyboardButton(text=f"📋 {t('feed.whats_next', lang)}", callback_data="feed_whats_next")]
         ])
 
         await state.set_state(FeedStates.reading_content)
@@ -490,6 +494,47 @@ async def handle_feed_question(message: Message, state: FSMContext):
         import traceback
         logger.error(f"Ошибка в handle_feed_question: {e}\n{traceback.format_exc()}")
         await message.answer("Не удалось обработать вопрос. Попробуйте позже.")
+
+
+@feed_router.callback_query(F.data == "feed_whats_next")
+async def show_whats_next(callback: CallbackQuery, state: FSMContext):
+    """Показывает предстоящие темы недели"""
+    chat_id = callback.message.chat.id
+    lang = await get_user_lang(chat_id)
+
+    try:
+        engine = FeedEngine(chat_id)
+        week = await engine.get_current_week()
+
+        if not week:
+            await callback.answer(t('errors.try_again', lang), show_alert=True)
+            return
+
+        topics = week.get('accepted_topics', [])
+        current_day = week.get('current_day', 1)
+
+        # Формируем список тем
+        text = f"📋 *{t('feed.whats_next', lang)}*\n\n"
+        text += f"{t('feed.week_progress', lang, current=current_day, total=len(topics))}\n\n"
+        text += f"*{t('feed.upcoming_topics', lang)}*\n"
+
+        for i, topic in enumerate(topics, 1):
+            if i < current_day:
+                mark = "✅"  # Пройдено
+            elif i == current_day:
+                mark = "📖"  # Сегодня
+            else:
+                mark = "⏳"  # Предстоит
+
+            text += f"{mark} {i}. {topic}\n"
+
+        await callback.message.answer(text, parse_mode="Markdown")
+        await callback.answer()
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Ошибка в show_whats_next: {e}\n{traceback.format_exc()}")
+        await callback.answer(t('errors.try_again', lang), show_alert=True)
 
 
 @feed_router.callback_query(F.data == "feed_fixation")
