@@ -2012,6 +2012,7 @@ async def on_save_bloom(callback: CallbackQuery, state: FSMContext):
         f"✅ {t('update.difficulty_changed', lang)}: *{t(f'bloom.level_{level}_short', lang)}*!\n\n"
         f"{t(f'bloom.level_{level}_desc', lang)}\n\n"
         f"{t('commands.learn', lang)}\n"
+        f"{t('commands.mode', lang)}\n"
         f"{t('commands.update', lang)}",
         parse_mode="Markdown"
     )
