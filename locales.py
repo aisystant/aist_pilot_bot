@@ -136,6 +136,22 @@ TRANSLATIONS = {
         'loading.generating_topics': '⏳ Генерирую темы...',
         'loading.generating_content': '⏳ Готовлю материал...',
         'loading.processing': '⏳ Обрабатываю...',
+
+        # Лента (Feed)
+        'feed.suggested_topics': 'Предлагаемые темы',
+        'feed.select_hint': 'Выберите кнопками или напишите текстом:',
+        'feed.select_example': 'Например: «1, 3» или «тема 2 и ещё хочу про собранность»',
+        'feed.topics_selected': 'Темы выбраны!',
+        'feed.topics_count': 'Выбрано {count} тем.',
+        'feed.selected_topics': 'Выбранные темы:',
+        'feed.your_topics': 'ваши темы',
+        'feed.what_next': 'Когда хочешь начать?',
+        'feed.tomorrow_planned': 'На завтра запланировано:',
+        'feed.alternative_topics': 'Альтернативные темы:',
+        'feed.keep_or_change': 'Оставить как есть — просто нажмите ✅\nИзменить — напишите номер или свою тему',
+        'feed.topic_saved': 'Тема на завтра сохранена!',
+        'feed.topic_changed': 'Тема на завтра изменена:',
+        'buttons.keep_topic': 'Оставить как есть',
     },
 
     'en': {
@@ -264,6 +280,22 @@ TRANSLATIONS = {
         'loading.generating_topics': '⏳ Generating topics...',
         'loading.generating_content': '⏳ Preparing content...',
         'loading.processing': '⏳ Processing...',
+
+        # Feed
+        'feed.suggested_topics': 'Suggested Topics',
+        'feed.select_hint': 'Select with buttons or type:',
+        'feed.select_example': 'Example: "1, 3" or "topic 2 and also want mindfulness"',
+        'feed.topics_selected': 'Topics selected!',
+        'feed.topics_count': '{count} topics selected.',
+        'feed.selected_topics': 'Selected topics:',
+        'feed.your_topics': 'your topics',
+        'feed.what_next': 'When do you want to start?',
+        'feed.tomorrow_planned': 'Planned for tomorrow:',
+        'feed.alternative_topics': 'Alternative topics:',
+        'feed.keep_or_change': 'Keep as is — just press ✅\nChange — type a number or your own topic',
+        'feed.topic_saved': 'Tomorrow\'s topic saved!',
+        'feed.topic_changed': 'Tomorrow\'s topic changed:',
+        'buttons.keep_topic': 'Keep as is',
     },
 
     'es': {
@@ -392,6 +424,22 @@ TRANSLATIONS = {
         'loading.generating_topics': '⏳ Generando temas...',
         'loading.generating_content': '⏳ Preparando contenido...',
         'loading.processing': '⏳ Procesando...',
+
+        # Feed
+        'feed.suggested_topics': 'Temas Sugeridos',
+        'feed.select_hint': 'Selecciona con botones o escribe:',
+        'feed.select_example': 'Ejemplo: "1, 3" o "tema 2 y también quiero atención plena"',
+        'feed.topics_selected': '¡Temas seleccionados!',
+        'feed.topics_count': '{count} temas seleccionados.',
+        'feed.selected_topics': 'Temas seleccionados:',
+        'feed.your_topics': 'tus temas',
+        'feed.what_next': '¿Cuándo quieres empezar?',
+        'feed.tomorrow_planned': 'Planificado para mañana:',
+        'feed.alternative_topics': 'Temas alternativos:',
+        'feed.keep_or_change': 'Mantener así — solo presiona ✅\nCambiar — escribe un número o tu propio tema',
+        'feed.topic_saved': '¡Tema de mañana guardado!',
+        'feed.topic_changed': 'Tema de mañana cambiado:',
+        'buttons.keep_topic': 'Mantener así',
     }
 }
 
