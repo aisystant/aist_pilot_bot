@@ -2327,12 +2327,16 @@ async def on_answer(message: Message, state: FSMContext):
 async def on_bonus_yes(callback: CallbackQuery, state: FSMContext):
     """Пользователь хочет дополнительный вопрос посложнее"""
     await callback.answer()
+    chat_id = callback.message.chat.id
+    user_id = callback.from_user.id
+    logger.info(f"[BONUS] on_bonus_yes вызван для chat_id={chat_id}, user_id={user_id}")
 
     data = await state.get_data()
     topic_index = data.get('topic_index', 0)
     next_command = data.get('next_command')
+    logger.info(f"[BONUS] State data: topic_index={topic_index}, next_command={next_command}")
 
-    intern = await get_intern(callback.message.chat.id)
+    intern = await get_intern(chat_id)
     topic = get_topic(topic_index)
     lang = intern.get('language', 'ru') if intern else 'ru'
 
@@ -2347,17 +2351,30 @@ async def on_bonus_yes(callback: CallbackQuery, state: FSMContext):
         # Генерируем вопрос следующего уровня
         marathon_day = get_marathon_day(intern)
         next_level = min(intern['bloom_level'] + 1, 3)
+        logger.info(f"[BONUS] Генерируем вопрос уровня {next_level} для темы {topic_index}")
         question = await claude.generate_question(topic, intern, marathon_day=marathon_day, bloom_level=next_level)
 
+        # ВАЖНО: Устанавливаем состояние СРАЗУ после генерации вопроса, ДО отправки
+        await state.update_data(topic_index=topic_index, next_command=next_command, bonus_level=next_level)
+        await state.set_state(LearningStates.waiting_for_bonus_answer)
+        current_state = await state.get_state()
+        logger.info(f"[BONUS] Состояние установлено ДО отправки сообщения: {current_state}")
+
+        # Теперь отправляем сообщение
         await callback.message.answer(
             f"🚀 *{t('marathon.bonus_question', lang)}* ({t(f'bloom.level_{next_level}_short', lang)})\n\n"
             f"{question}\n\n"
             f"{t('marathon.write_answer', lang)}",
             parse_mode="Markdown"
         )
-        await state.set_state(LearningStates.waiting_for_bonus_answer)
+
+        # Финальная проверка состояния
+        final_state = await state.get_state()
+        logger.info(f"[BONUS] Состояние после отправки сообщения: {final_state}")
     except Exception as e:
         logger.error(f"Ошибка генерации бонусного вопроса: {e}")
+        import traceback
+        logger.error(f"[BONUS] Traceback: {traceback.format_exc()}")
         # Если не удалось сгенерировать вопрос — предлагаем продолжить
         await callback.message.answer(
             f"Не удалось сгенерировать бонусный вопрос. Попробуйте позже.\n\n"
@@ -2382,14 +2399,19 @@ async def on_bonus_no(callback: CallbackQuery, state: FSMContext):
 @router.message(LearningStates.waiting_for_bonus_answer)
 async def on_bonus_answer(message: Message, state: FSMContext):
     """Обработка ответа на бонусный вопрос"""
+    chat_id = message.chat.id
+    current_state = await state.get_state()
+    logger.info(f"[BONUS] on_bonus_answer вызван для chat_id={chat_id}, state={current_state}")
+
     if len(message.text.strip()) < 20:
         await message.answer("Напишите подробнее (хотя бы 2-3 предложения)")
         return
 
-    intern = await get_intern(message.chat.id)
+    intern = await get_intern(chat_id)
     data = await state.get_data()
     topic_index = data.get('topic_index', 0)
     lang = intern.get('language', 'ru') if intern else 'ru'
+    logger.info(f"[BONUS] Processing answer: topic_index={topic_index}, data_keys={list(data.keys())}")
 
     try:
         # Сохраняем ответ на бонусный вопрос
@@ -2956,14 +2978,17 @@ async def on_unknown_message(message: Message, state: FSMContext):
     """Обработка сообщений вне FSM-состояний"""
     current_state = await state.get_state()
     text = message.text or ''
+    chat_id = message.chat.id
+    logger.info(f"[UNKNOWN] on_unknown_message вызван для chat_id={chat_id}, state={current_state}, text={text[:50] if text else '[no text]'}")
 
     # Если пользователь в каком-то состоянии — логируем для отладки
     if current_state:
-        logger.warning(f"Unhandled message in state {current_state} from user {message.chat.id}: {text[:50] if text else '[no text]'}")
+        logger.warning(f"Unhandled message in state {current_state} from user {chat_id}: {text[:50] if text else '[no text]'}")
         return
 
     # Пользователь не в FSM-состоянии
-    intern = await get_intern(message.chat.id)
+    logger.info(f"[UNKNOWN] Пользователь {chat_id} не в FSM-состоянии, проверяем intent")
+    intern = await get_intern(chat_id)
 
     if not intern:
         # Новый пользователь
