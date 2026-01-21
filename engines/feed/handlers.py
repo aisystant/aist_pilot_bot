@@ -565,31 +565,57 @@ async def feed_reset_topics(callback: CallbackQuery, state: FSMContext):
 
 @feed_router.message(FeedStates.editing_topic, F.text.func(lambda t: not t.startswith('/')))
 async def handle_topic_edit(message: Message, state: FSMContext):
-    """Обрабатывает ввод новых тем (список через запятую или с новой строки, максимум 3)"""
+    """Обрабатывает ввод новых тем.
+
+    Форматы:
+    - Числа (1, 2, 3) — ссылки на существующие темы
+    - Текст — новые темы
+    - Комбинация: "1, 2, Собранность" → темы 1, 2 + новая "Собранность"
+    """
     try:
         chat_id = message.chat.id
         lang = await get_user_lang(chat_id)
         text = message.text.strip()
 
-        if len(text) < 3:
-            await message.answer("Введите названия тем (минимум 3 символа).")
+        if len(text) < 1:
+            await message.answer("Введите темы.")
             return
+
+        # Получаем текущие темы для ссылок по номерам
+        engine = FeedEngine(chat_id)
+        week = await engine.get_current_week()
+        current_topics = week.get('accepted_topics', []) if week else []
 
         # Парсим темы: разделители — запятая или новая строка
         import re
-        raw_topics = re.split(r'[,\n]+', text)
+        raw_items = re.split(r'[,\n]+', text)
 
-        # Очищаем и фильтруем
         new_topics = []
-        for topic in raw_topics:
-            topic = topic.strip()
+        for item in raw_items:
+            item = item.strip()
+            if not item:
+                continue
+
             # Убираем нумерацию в начале (1., 1 -, 1) и т.п.)
-            topic = re.sub(r'^\d+[\.\)\-\s]+', '', topic).strip()
-            if len(topic) >= 2:
-                new_topics.append(topic.capitalize())
+            clean_item = re.sub(r'^\d+[\.\)\-\s]+', '', item).strip()
+
+            # Проверяем, это число (ссылка на существующую тему)?
+            if item.isdigit():
+                idx = int(item) - 1
+                if 0 <= idx < len(current_topics):
+                    topic = current_topics[idx]
+                    if topic not in new_topics:
+                        new_topics.append(topic)
+                continue
+
+            # Это текст — новая тема
+            if clean_item and len(clean_item) >= 2:
+                topic = clean_item.capitalize()
+                if topic not in new_topics:
+                    new_topics.append(topic)
 
         if not new_topics:
-            await message.answer("Не удалось распознать темы. Попробуйте ещё раз.")
+            await message.answer("Не удалось распознать темы. Введите названия тем или номера из списка.")
             return
 
         # Ограничение: максимум 3 темы
@@ -598,7 +624,6 @@ async def handle_topic_edit(message: Message, state: FSMContext):
             await message.answer("_Оставлены первые 3 темы_", parse_mode="Markdown")
 
         # Обновляем темы
-        engine = FeedEngine(chat_id)
         success = await engine.set_topics(new_topics)
 
         if success:
