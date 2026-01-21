@@ -525,7 +525,13 @@ async def feed_topics_menu(callback: CallbackQuery, state: FSMContext):
                     )
                 ])
 
-        # Кнопка "Назад"
+        # Кнопка "Выбрать заново" и "Назад"
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"🔄 {t('buttons.reset_topics', lang)}",
+                callback_data="feed_reset_topics"
+            )
+        ])
         buttons.append([
             InlineKeyboardButton(
                 text=t('buttons.back_to_menu', lang),
@@ -541,6 +547,34 @@ async def feed_topics_menu(callback: CallbackQuery, state: FSMContext):
         import traceback
         logger.error(f"Ошибка в feed_topics_menu: {e}\n{traceback.format_exc()}")
         await callback.answer(t('errors.try_again', lang), show_alert=True)
+
+
+@feed_router.callback_query(F.data == "feed_reset_topics")
+async def feed_reset_topics(callback: CallbackQuery, state: FSMContext):
+    """Начинает выбор тем заново — генерирует новые предложения"""
+    chat_id = callback.message.chat.id
+    lang = await get_user_lang(chat_id)
+
+    await callback.answer()
+
+    # Показываем индикатор загрузки
+    await callback.message.edit_text(t('loading.generating_topics', lang))
+
+    # Генерируем новые темы
+    engine = FeedEngine(chat_id)
+    topics, msg = await engine.suggest_topics()
+
+    if not topics:
+        await callback.message.edit_text(msg)
+        return
+
+    # Показываем выбор тем
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    await show_topic_selection(callback.message, topics, state)
 
 
 @feed_router.callback_query(F.data.startswith("feed_edit_topic_"))
