@@ -1250,7 +1250,7 @@ def kb_update_profile(lang: str = 'ru') -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="⏰ " + t('onboarding.ask_time', lang)[:10], callback_data="upd_schedule")],
         [InlineKeyboardButton(text="🎚 " + t('settings.title', lang)[:10], callback_data="upd_bloom")],
         [InlineKeyboardButton(text="🎯 " + t('modes.select', lang)[:15], callback_data="upd_mode")],
-        [InlineKeyboardButton(text=t('buttons.change_language', lang), callback_data="upd_language")],
+        [InlineKeyboardButton(text="🌐 " + t('buttons.change_language', lang), callback_data="upd_language")],
         [InlineKeyboardButton(text=t('buttons.cancel', lang), callback_data="upd_cancel")]
     ])
 
@@ -1631,14 +1631,16 @@ async def cmd_progress(message: Message):
 @router.message(Command("profile"))
 async def cmd_profile(message: Message):
     intern = await get_intern(message.chat.id)
+    lang = intern.get('language', 'ru')
+
     if not intern['onboarding_completed']:
-        await message.answer("Сначала /start")
+        await message.answer(t('profile.first_start', lang))
         return
 
     duration = STUDY_DURATIONS.get(str(intern['study_duration']), {})
     bloom = BLOOM_LEVELS.get(intern['bloom_level'], BLOOM_LEVELS[1])
 
-    interests_str = ', '.join(intern['interests']) if intern['interests'] else 'не указаны'
+    interests_str = ', '.join(intern['interests']) if intern['interests'] else t('profile.not_specified', lang)
     motivation_short = intern['motivation'][:100] + '...' if len(intern.get('motivation', '')) > 100 else intern.get('motivation', '')
     goals_short = intern['goals'][:100] + '...' if len(intern['goals']) > 100 else intern['goals']
 
@@ -1646,35 +1648,53 @@ async def cmd_profile(message: Message):
         f"👤 *{intern['name']}*\n"
         f"💼 {intern.get('occupation', '')}\n"
         f"🎨 {interests_str}\n\n"
-        f"💫 *Что важно:* {motivation_short or 'не указано'}\n"
-        f"🎯 *Что изменить:* {goals_short}\n\n"
-        f"{duration.get('emoji', '')} {duration.get('name', '')} на тему\n"
-        f"{bloom['emoji']} Уровень: {bloom['short_name']} «{bloom['name']}»\n"
-        f"⏰ Напоминание в {intern['schedule_time']}\n\n"
+        f"💫 *{t('profile.what_important', lang)}:* {motivation_short or t('profile.not_specified', lang)}\n"
+        f"🎯 *{t('profile.what_change', lang)}:* {goals_short}\n\n"
+        f"{duration.get('emoji', '')} {duration.get('name', '')}\n"
+        f"{bloom['emoji']} {bloom['short_name']} «{bloom['name']}»\n"
+        f"⏰ {t('profile.reminder_at', lang)} {intern['schedule_time']}\n"
+        f"🌐 {get_language_name(lang)}\n\n"
         f"🆔 `{message.chat.id}`\n\n"
-        f"/update — обновить профиль",
+        f"{t('commands.update', lang)}",
         parse_mode="Markdown"
     )
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
+    intern = await get_intern(message.chat.id)
+    lang = intern.get('language', 'ru') if intern else 'ru'
+
     await message.answer(
-        "📖 *Основные команды:*\n\n"
-        "/learn — получить новую тему для изучения\n"
-        "/mode — выбор режима (Марафон/Лента)\n"
-        "/progress — посмотреть свой прогресс\n"
-        "/profile — посмотреть свой профиль\n"
-        "/update — обновить профиль\n\n"
-        "*Как работает обучение:*\n"
-        "1. Я отправляю персонализированный материал\n"
-        "2. Вы изучаете его (5-25 мин)\n"
-        "3. Отвечаете на вопрос для закрепления\n"
-        "4. Тема засчитывается в прогресс\n\n"
-        "Материал буду отправлять в заданное время или по /learn\n\n"
+        f"📖 *{t('help.title', lang)}:*\n\n"
+        f"{t('commands.learn', lang)}\n"
+        f"/mode — {t('menu.mode', lang)}\n"
+        f"{t('commands.progress', lang)}\n"
+        f"{t('commands.profile', lang)}\n"
+        f"{t('commands.update', lang)}\n"
+        f"{t('commands.language', lang)}\n\n"
+        f"*{t('help.how_it_works', lang)}:*\n"
+        f"{t('help.step1', lang)}\n"
+        f"{t('help.step2', lang)}\n"
+        f"{t('help.step3', lang)}\n"
+        f"{t('help.step4', lang)}\n\n"
+        f"{t('help.schedule_note', lang)}\n\n"
         "🔗 [Мастерская инженеров-менеджеров](https://system-school.ru/)\n\n"
-        "💬 Замечания и предложения: @tserentserenov",
+        f"💬 {t('help.feedback', lang)}: @tserentserenov",
         parse_mode="Markdown"
     )
+
+@router.message(Command("language"))
+async def cmd_language(message: Message, state: FSMContext):
+    """Команда смены языка напрямую"""
+    intern = await get_intern(message.chat.id)
+    lang = intern.get('language', 'ru') if intern else 'ru'
+
+    await message.answer(
+        t('settings.language.title', lang),
+        reply_markup=kb_language_select()
+    )
+    await state.set_state(UpdateStates.choosing_field)
+
 
 # --- Обновление профиля ---
 
@@ -2774,6 +2794,7 @@ async def main():
         BotCommand(command="profile", description="Мой профиль"),
         BotCommand(command="update", description="Обновить профиль"),
         BotCommand(command="mode", description="Выбор режима (Марафон/Лента)"),
+        BotCommand(command="language", description="Сменить язык"),
         BotCommand(command="start", description="Перезапустить онбординг"),
         BotCommand(command="help", description="Справка")
     ])

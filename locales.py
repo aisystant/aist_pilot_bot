@@ -22,6 +22,18 @@ TRANSLATIONS = {
         'commands.progress': '/progress — мой прогресс',
         'commands.profile': '/profile — мой профиль',
         'commands.update': '/update — обновить настройки',
+        'commands.language': '/language — сменить язык',
+        'commands.help': '/help — справка',
+
+        # Описания команд для меню
+        'menu.learn': 'Получить новую тему',
+        'menu.progress': 'Мой прогресс',
+        'menu.profile': 'Мой профиль',
+        'menu.update': 'Обновить профиль',
+        'menu.mode': 'Выбор режима',
+        'menu.language': 'Сменить язык',
+        'menu.start': 'Перезапустить онбординг',
+        'menu.help': 'Справка',
 
         # Онбординг
         'onboarding.nice_to_meet': 'Приятно познакомиться, {name}!',
@@ -39,6 +51,11 @@ TRANSLATIONS = {
         'onboarding.ask_time': 'Во сколько напоминать о новой теме?',
         'onboarding.ask_time_hint': '_Формат: ЧЧ:ММ (например 09:00). Часовой пояс: Москва (UTC+3)_',
         'onboarding.ask_start_date': 'Когда начнём марафон?',
+
+        # Длительность
+        'duration.minutes_5': '⚡ 5 минут',
+        'duration.minutes_15': '🕑 15 минут',
+        'duration.minutes_25': '🕓 25 минут',
 
         # Кнопки
         'buttons.yes': 'Да',
@@ -60,6 +77,23 @@ TRANSLATIONS = {
         'modes.select': 'Выбери режим',
         'modes.marathon_desc': '14-дневный марафон',
 
+        # Профиль
+        'profile.what_important': 'Что важно',
+        'profile.what_change': 'Что изменить',
+        'profile.reminder_at': 'Напоминание в',
+        'profile.not_specified': 'не указано',
+        'profile.first_start': 'Сначала /start',
+
+        # Справка
+        'help.title': 'Основные команды',
+        'help.how_it_works': 'Как работает обучение',
+        'help.step1': '1. Я отправляю персонализированный материал',
+        'help.step2': '2. Вы изучаете его (5-25 мин)',
+        'help.step3': '3. Отвечаете на вопрос для закрепления',
+        'help.step4': '4. Тема засчитывается в прогресс',
+        'help.schedule_note': 'Материал буду отправлять в заданное время или по /learn',
+        'help.feedback': 'Замечания и предложения',
+
         # Ошибки
         'errors.try_again': 'Попробуй ещё раз',
     },
@@ -76,6 +110,18 @@ TRANSLATIONS = {
         'commands.progress': '/progress — my progress',
         'commands.profile': '/profile — my profile',
         'commands.update': '/update — update settings',
+        'commands.language': '/language — change language',
+        'commands.help': '/help — help',
+
+        # Menu descriptions
+        'menu.learn': 'Get a new topic',
+        'menu.progress': 'My progress',
+        'menu.profile': 'My profile',
+        'menu.update': 'Update profile',
+        'menu.mode': 'Select mode',
+        'menu.language': 'Change language',
+        'menu.start': 'Restart onboarding',
+        'menu.help': 'Help',
 
         # Onboarding
         'onboarding.nice_to_meet': 'Nice to meet you, {name}!',
@@ -93,6 +139,11 @@ TRANSLATIONS = {
         'onboarding.ask_time': 'When should I remind you about new topics?',
         'onboarding.ask_time_hint': '_Format: HH:MM (e.g. 09:00). Timezone: Moscow (UTC+3)_',
         'onboarding.ask_start_date': 'When shall we start the marathon?',
+
+        # Duration
+        'duration.minutes_5': '⚡ 5 minutes',
+        'duration.minutes_15': '🕑 15 minutes',
+        'duration.minutes_25': '🕓 25 minutes',
 
         # Buttons
         'buttons.yes': 'Yes',
@@ -114,6 +165,23 @@ TRANSLATIONS = {
         'modes.select': 'Select mode',
         'modes.marathon_desc': '14-day marathon',
 
+        # Profile
+        'profile.what_important': 'What matters',
+        'profile.what_change': 'What to change',
+        'profile.reminder_at': 'Reminder at',
+        'profile.not_specified': 'not specified',
+        'profile.first_start': 'First run /start',
+
+        # Help
+        'help.title': 'Main commands',
+        'help.how_it_works': 'How learning works',
+        'help.step1': '1. I send personalized material',
+        'help.step2': '2. You study it (5-25 min)',
+        'help.step3': '3. Answer a question to reinforce',
+        'help.step4': '4. Topic counts toward progress',
+        'help.schedule_note': "I'll send material at scheduled time or via /learn",
+        'help.feedback': 'Feedback and suggestions',
+
         # Errors
         'errors.try_again': 'Try again',
     },
@@ -130,6 +198,18 @@ TRANSLATIONS = {
         'commands.progress': '/progress — mi progreso',
         'commands.profile': '/profile — mi perfil',
         'commands.update': '/update — actualizar ajustes',
+        'commands.language': '/language — cambiar idioma',
+        'commands.help': '/help — ayuda',
+
+        # Descripciones de menú
+        'menu.learn': 'Obtener un nuevo tema',
+        'menu.progress': 'Mi progreso',
+        'menu.profile': 'Mi perfil',
+        'menu.update': 'Actualizar perfil',
+        'menu.mode': 'Seleccionar modo',
+        'menu.language': 'Cambiar idioma',
+        'menu.start': 'Reiniciar onboarding',
+        'menu.help': 'Ayuda',
 
         # Onboarding
         'onboarding.nice_to_meet': '¡Mucho gusto, {name}!',
@@ -147,6 +227,11 @@ TRANSLATIONS = {
         'onboarding.ask_time': '¿Cuándo debo recordarte sobre nuevos temas?',
         'onboarding.ask_time_hint': '_Formato: HH:MM (ej. 09:00). Zona horaria: Moscú (UTC+3)_',
         'onboarding.ask_start_date': '¿Cuándo empezamos el maratón?',
+
+        # Duración
+        'duration.minutes_5': '⚡ 5 minutos',
+        'duration.minutes_15': '🕑 15 minutos',
+        'duration.minutes_25': '🕓 25 minutos',
 
         # Botones
         'buttons.yes': 'Sí',
@@ -167,6 +252,23 @@ TRANSLATIONS = {
         # Modos
         'modes.select': 'Seleccionar modo',
         'modes.marathon_desc': 'Maratón de 14 días',
+
+        # Perfil
+        'profile.what_important': 'Qué es importante',
+        'profile.what_change': 'Qué cambiar',
+        'profile.reminder_at': 'Recordatorio a las',
+        'profile.not_specified': 'no especificado',
+        'profile.first_start': 'Primero /start',
+
+        # Ayuda
+        'help.title': 'Comandos principales',
+        'help.how_it_works': 'Cómo funciona el aprendizaje',
+        'help.step1': '1. Envío material personalizado',
+        'help.step2': '2. Lo estudias (5-25 min)',
+        'help.step3': '3. Respondes una pregunta para reforzar',
+        'help.step4': '4. El tema cuenta para tu progreso',
+        'help.schedule_note': 'Enviaré material a la hora programada o via /learn',
+        'help.feedback': 'Comentarios y sugerencias',
 
         # Errores
         'errors.try_again': 'Inténtalo de nuevo',
