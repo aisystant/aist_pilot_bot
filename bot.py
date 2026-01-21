@@ -1300,7 +1300,7 @@ router = Router()
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     intern = await get_intern(message.chat.id)
-    
+
     if intern['onboarding_completed']:
         await message.answer(
             f"👋 С возвращением, {intern['name']}!\n\n"
@@ -1310,15 +1310,43 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         return
 
-    await message.answer(
-        "👋 Hello! I'm your AI guide for systemic self-development (AI System Track).\n"
-        "I'll ask a few questions to personalize the content for you (~2 min).\n"
-        "What is your name?\n\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "👋 Здравствуйте! Я — ваш AI-помощник по системному развитию (AI System Track).\n"
-        "Задам несколько вопросов, чтобы адаптировать материал под вас (~2 мин).\n"
-        "Как вас зовут?"
-    )
+    # Определяем язык интерфейса пользователя
+    user_lang = (message.from_user.language_code or '')[:2].lower()
+
+    if user_lang == 'ru':
+        welcome_text = (
+            "👋 Здравствуйте! Я — ваш AI-помощник по системному развитию (AI System Track).\n"
+            "Задам несколько вопросов, чтобы адаптировать материал под вас (~2 мин).\n\n"
+            "Как вас зовут?"
+        )
+    elif user_lang == 'en':
+        welcome_text = (
+            "👋 Hello! I'm your AI guide for systemic self-development (AI System Track).\n"
+            "I'll ask a few questions to personalize the content for you (~2 min).\n\n"
+            "What is your name?"
+        )
+    elif user_lang == 'es':
+        welcome_text = (
+            "👋 ¡Hola! Soy tu guía de IA para el autodesarrollo sistémico (AI System Track).\n"
+            "Te haré algunas preguntas para personalizar el contenido (~2 min).\n\n"
+            "¿Cómo te llamas?"
+        )
+    else:
+        # Для неизвестных языков — двуязычное (EN + RU)
+        welcome_text = (
+            "👋 Hello! I'm your AI guide for systemic self-development (AI System Track).\n"
+            "I'll ask a few questions to personalize the content for you (~2 min).\n"
+            "What is your name?\n\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "👋 Здравствуйте! Я — ваш AI-помощник по системному развитию (AI System Track).\n"
+            "Задам несколько вопросов, чтобы адаптировать материал под вас (~2 мин).\n"
+            "Как вас зовут?"
+        )
+
+    # Сохраняем определённый язык для дальнейшего использования
+    await state.update_data(detected_lang=user_lang if user_lang in ('ru', 'en', 'es') else 'ru')
+
+    await message.answer(welcome_text)
     await state.set_state(OnboardingStates.waiting_for_name)
 
 @router.message(OnboardingStates.waiting_for_name)
