@@ -1232,12 +1232,6 @@ def kb_learn() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="⏰ Начать в установленное время", callback_data="later")]
     ])
 
-def kb_learn_later() -> InlineKeyboardMarkup:
-    """Клавиатура для случая когда старт в будущем"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⏰ Жду в установленное время", callback_data="later")]
-    ])
-
 def kb_update_profile() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👤 Имя", callback_data="upd_name"),
@@ -1317,8 +1311,12 @@ async def cmd_start(message: Message, state: FSMContext):
         return
 
     await message.answer(
-        "👋 Здравствуйте! Я персональный помощник для системного развития.\n\n"
-        "Задам несколько вопросов, чтобы адаптировать материал под вас (~2 мин).\n\n"
+        "👋 Hello! I'm your personal assistant for systematic development.\n"
+        "I'll ask a few questions to personalize the content for you (~2 min).\n"
+        "What is your name?\n\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "👋 Здравствуйте! Я персональный помощник для системного развития.\n"
+        "Задам несколько вопросов, чтобы адаптировать материал под вас (~2 мин).\n"
         "Как вас зовут?"
     )
     await state.set_state(OnboardingStates.waiting_for_name)
@@ -1492,7 +1490,7 @@ async def on_confirm(callback: CallbackQuery, state: FSMContext):
         f"⏰ Напоминания каждый день в {intern['schedule_time']}\n\n"
         f"{start_msg}",
         parse_mode="Markdown",
-        reply_markup=kb_learn() if can_start_now else kb_learn_later()
+        reply_markup=kb_learn()
     )
     await state.clear()
 
