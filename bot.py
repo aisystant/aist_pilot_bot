@@ -1337,7 +1337,9 @@ def kb_language_select() -> InlineKeyboardMarkup:
 
 def progress_bar(completed: int, total: int) -> str:
     pct = int((completed / total) * 100) if total > 0 else 0
-    return f"{'█' * (pct // 10)}{'░' * (10 - pct // 10)} {pct}%"
+    # Показываем хотя бы 1 заполненный кубик, если есть прогресс
+    filled = max(1, pct // 10) if pct > 0 else 0
+    return f"{'█' * filled}{'░' * (10 - filled)} {pct}%"
 
 # ============= РОУТЕР =============
 
