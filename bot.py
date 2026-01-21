@@ -315,6 +315,9 @@ async def init_db():
         # Язык интерфейса
         await conn.execute("ALTER TABLE interns ADD COLUMN IF NOT EXISTS language VARCHAR(5) DEFAULT 'ru'")
 
+        # Второе напоминание
+        await conn.execute("ALTER TABLE interns ADD COLUMN IF NOT EXISTS schedule_time_2 TEXT DEFAULT NULL")
+
         # Таблица для напоминаний
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS reminders (
@@ -409,6 +412,7 @@ async def get_intern(chat_id: int) -> dict:
                 'desires': row['desires'] or '',
                 'goals': row['goals'],
                 'schedule_time': row['schedule_time'],
+                'schedule_time_2': row['schedule_time_2'] if 'schedule_time_2' in row.keys() else None,
                 'current_topic_index': row['current_topic_index'],
                 'completed_topics': json.loads(row['completed_topics']),
                 'bloom_level': row['bloom_level'] if row['bloom_level'] else 1,
@@ -442,6 +446,7 @@ async def get_intern(chat_id: int) -> dict:
                 'desires': '',
                 'goals': '',
                 'schedule_time': '09:00',
+                'schedule_time_2': None,
                 'current_topic_index': 0,
                 'completed_topics': [],
                 'bloom_level': 1,
@@ -1598,55 +1603,181 @@ async def cb_later(callback: CallbackQuery):
 
 @router.message(Command("progress"))
 async def cmd_progress(message: Message):
+    """Короткий отчёт прогресса за текущую неделю"""
+    from db.queries.answers import (
+        get_weekly_marathon_stats, get_weekly_feed_stats,
+        get_work_products_by_day
+    )
+    from db.queries.activity import get_activity_stats
+
     intern = await get_intern(message.chat.id)
     if not intern['onboarding_completed']:
         await message.answer("Сначала /start")
         return
 
+    chat_id = message.chat.id
+
+    # Получаем статистику
+    activity_stats = await get_activity_stats(chat_id)
+    marathon_stats = await get_weekly_marathon_stats(chat_id)
+    feed_stats = await get_weekly_feed_stats(chat_id)
+    wp_by_day = await get_work_products_by_day(chat_id, TOPICS)
+
+    # Общие данные
+    days_active_week = activity_stats.get('days_active_this_week', 0)
+
+    # Марафон
     done = len(intern['completed_topics'])
     total = get_total_topics()
     marathon_day = get_marathon_day(intern)
     days_progress = get_days_progress(intern['completed_topics'], marathon_day)
 
-    # Формируем прогресс по дням (показываем первые 7 или 14 в зависимости от текущего дня)
-    days_text = ""
+    # Формируем прогресс по дням (в обратном порядке, от текущего к первому)
+    days_to_show = []
     for d in days_progress:
         day_num = d['day']
         if day_num > marathon_day + 1:
-            break  # Не показываем далёкие дни
+            break
+        days_to_show.append(d)
+
+    days_text = ""
+    for d in reversed(days_to_show):  # Обратный порядок
+        day_num = d['day']
+        wp_count = wp_by_day.get(day_num, 0)
 
         if d['status'] == 'completed':
             emoji = "✅"
+            wp_text = f" | РП: {wp_count}" if wp_count > 0 else ""
         elif d['status'] == 'in_progress':
             emoji = "🔄"
+            wp_text = f" | РП: {wp_count}" if wp_count > 0 else ""
         elif d['status'] == 'available':
             emoji = "📍"
+            wp_text = ""
         else:
             emoji = "🔒"
+            wp_text = ""
 
-        days_text += f"{emoji} День {day_num}: {d['completed']}/{d['total']}\n"
+        status_text = f"{d['completed']}/{d['total']}" if d['status'] != 'locked' else "—/2"
+        days_text += f"   {emoji} День {day_num}: {status_text}{wp_text}\n"
 
-    # Неделя 1 / Неделя 2
+    # Лента - получаем темы
+    from engines.feed.engine import FeedEngine
+    feed_engine = FeedEngine(chat_id)
+    feed_status = await feed_engine.get_status()
+    feed_topics = feed_status.get('topics', [])
+    feed_topics_text = ", ".join(feed_topics) if feed_topics else "не выбраны"
+
+    # Общие РП за неделю
+    total_wp_week = marathon_stats.get('work_products', 0)
+
+    text = f"📊 *Прогресс: {intern['name']}*\n\n"
+    text += f"Активных дней за неделю: {days_active_week}\n\n"
+
+    # Марафон
+    text += f"🏃 *Марафон* (день {marathon_day}/{MARATHON_DAYS})\n"
+    text += f"Пройдено тем: {done}. Рабочих продуктов: {total_wp_week}\n\n"
+    text += f"📋 По дням:\n{days_text}\n"
+
+    # Лента
+    text += f"📚 *Лента*\n"
+    text += f"Дайджестов: {feed_stats.get('digests', 0)}. Фиксаций: {feed_stats.get('fixations', 0)}\n"
+    text += f"Темы: {feed_topics_text}"
+
+    # Кнопки
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📊 Полный отчёт", callback_data="progress_full"),
+            InlineKeyboardButton(text="⚙️ Настройки", callback_data="go_update")
+        ]
+    ])
+
+    await message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+
+
+@router.callback_query(F.data == "progress_full")
+async def show_full_progress(callback: CallbackQuery):
+    """Полный отчёт с начала использования бота"""
+    from db.queries.answers import get_total_stats, get_work_products_by_day
+
+    chat_id = callback.message.chat.id
+    intern = await get_intern(chat_id)
+
+    # Получаем полную статистику
+    total_stats = await get_total_stats(chat_id)
+
+    # Дата регистрации
+    reg_date = total_stats.get('registered_at')
+    if reg_date:
+        date_str = reg_date.strftime('%d.%m.%Y')
+    else:
+        date_str = "—"
+
+    days_since = total_stats.get('days_since_start', 1)
+    total_active = total_stats.get('total_active_days', 0)
+
+    # Марафон
+    done = len(intern['completed_topics'])
+    total = get_total_topics()
+    marathon_day = get_marathon_day(intern)
+    pct = int((done / total) * 100) if total > 0 else 0
+    bar = '█' * (pct // 5) + '░' * (20 - pct // 5)
+
+    # Прогресс по неделям
     weeks = get_sections_progress(intern['completed_topics'])
     weeks_text = ""
     for i, week in enumerate(weeks):
-        pct = int((week['completed'] / week['total']) * 100) if week['total'] > 0 else 0
-        bar = '█' * (pct // 10) + '░' * (10 - pct // 10)
-        status = " ✅" if week['completed'] == week['total'] else ""
-        weeks_text += f"{'1️⃣' if i == 0 else '2️⃣'} Неделя {i + 1}: {bar} {week['completed']}/{week['total']}{status}\n"
+        w_pct = int((week['completed'] / week['total']) * 100) if week['total'] > 0 else 0
+        w_bar = '█' * (w_pct // 10) + '░' * (10 - w_pct // 10)
+        weeks_text += f"{'1️⃣' if i == 0 else '2️⃣'} {w_bar} {week['completed']}/{week['total']}\n"
 
-    await message.answer(
-        f"📊 *Прогресс: {intern['name']}*\n\n"
-        f"🗓 *День {marathon_day} из {MARATHON_DAYS}*\n"
-        f"✅ {done} из {total} тем\n"
-        f"{progress_bar(done, total)}\n\n"
-        f"*По неделям*\n"
-        f"{weeks_text}\n"
-        f"*По дням*\n"
-        f"{days_text}\n"
-        f"/learn — продолжить обучение",
-        parse_mode="Markdown"
-    )
+    # Лента
+    from engines.feed.engine import FeedEngine
+    feed_engine = FeedEngine(chat_id)
+    feed_status = await feed_engine.get_status()
+    feed_topics = feed_status.get('topics', [])
+    feed_topics_text = ", ".join(feed_topics) if feed_topics else "не выбраны"
+
+    text = f"📊 *Полный отчёт с {date_str}: {intern['name']}*\n\n"
+    text += f"Активных дней: {total_active} из {days_since}\n\n"
+
+    # Марафон
+    text += f"🏃 *Марафон*\n"
+    text += f"День {marathon_day} из {MARATHON_DAYS} | {done}/{total} тем\n"
+    text += f"{bar}\n"
+    text += f"Рабочих продуктов: {total_stats.get('total_work_products', 0)}\n\n"
+    text += f"{weeks_text}\n"
+
+    # Лента
+    text += f"📚 *Лента*\n"
+    text += f"Дайджестов: {total_stats.get('total_digests', 0)}. Фиксаций: {total_stats.get('total_fixations', 0)}\n"
+    text += f"Темы: {feed_topics_text}"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="« Назад", callback_data="progress_back")]
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "progress_back")
+async def progress_back(callback: CallbackQuery):
+    """Возврат к короткому отчёту"""
+    # Создаём фейковое сообщение для вызова cmd_progress
+    await callback.message.delete()
+    # Отправляем новое сообщение как если бы была команда /progress
+    await cmd_progress(callback.message)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "go_update")
+async def go_to_update(callback: CallbackQuery):
+    """Переход к настройкам"""
+    await callback.answer()
+    # Имитируем команду /update
+    await callback.message.delete()
+    await callback.message.answer("/update — настройки профиля")
 
 @router.message(Command("profile"))
 async def cmd_profile(message: Message):

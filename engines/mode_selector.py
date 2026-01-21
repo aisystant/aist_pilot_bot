@@ -79,7 +79,7 @@ async def cmd_mode(message: Message):
 
 @mode_router.callback_query(F.data == "mode_marathon")
 async def select_marathon(callback: CallbackQuery):
-    """Выбор режима Марафон"""
+    """Выбор режима Марафон — показывает меню настроек"""
     try:
         chat_id = callback.message.chat.id
         intern = await get_intern(chat_id)
@@ -87,51 +87,471 @@ async def select_marathon(callback: CallbackQuery):
         marathon_status = intern.get('marathon_status', MarathonStatus.NOT_STARTED)
         has_progress = len(intern.get('completed_topics', [])) > 0 or intern.get('current_topic_index', 0) > 0
 
-        # Если марафон был на паузе - возобновляем
-        if marathon_status == MarathonStatus.PAUSED:
-            await update_intern(chat_id,
-                mode=Mode.MARATHON,
-                marathon_status=MarathonStatus.ACTIVE,
-            )
-            await callback.message.edit_text(
-                "✅ *Режим Марафон возобновлён!*\n\n"
-                "Используйте /learn для продолжения обучения.",
-                parse_mode="Markdown"
-            )
-        elif marathon_status == MarathonStatus.COMPLETED:
-            await callback.message.edit_text(
-                "🎉 *Марафон завершён!*\n\n"
-                "Вы уже прошли 14-дневный курс.\n"
-                "Рекомендуем перейти в режим Лента: /feed",
-                parse_mode="Markdown"
-            )
-        elif marathon_status == MarathonStatus.NOT_STARTED and not has_progress:
-            # Реально новый пользователь
-            await update_intern(chat_id,
-                mode=Mode.MARATHON,
-                marathon_status=MarathonStatus.ACTIVE,
-            )
-            await callback.message.edit_text(
-                "✅ *Режим Марафон активирован!*\n\n"
-                "Используйте /learn для начала обучения.",
-                parse_mode="Markdown"
-            )
-        else:
-            # Активен или legacy пользователь с прогрессом
-            await update_intern(chat_id,
-                mode=Mode.MARATHON,
-                marathon_status=MarathonStatus.ACTIVE,
-            )
-            await callback.message.edit_text(
-                "✅ *Режим Марафон*\n\n"
-                "Используйте /learn для продолжения обучения.",
-                parse_mode="Markdown"
-            )
+        # Активируем режим
+        await update_intern(chat_id,
+            mode=Mode.MARATHON,
+            marathon_status=MarathonStatus.ACTIVE if marathon_status != MarathonStatus.COMPLETED else MarathonStatus.COMPLETED,
+        )
 
+        # Показываем меню настроек марафона
+        await show_marathon_settings(callback.message, intern, edit=True)
         await callback.answer()
+
     except Exception as e:
-        logger.error(f"Ошибка в select_marathon: {e}")
+        import traceback
+        logger.error(f"Ошибка в select_marathon: {e}\n{traceback.format_exc()}")
         await callback.answer("Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
+
+
+async def show_marathon_settings(message, intern: dict, edit: bool = False):
+    """Показывает меню настроек марафона"""
+    from db.queries.users import moscow_today
+
+    chat_id = message.chat.id if hasattr(message, 'chat') else intern.get('chat_id')
+
+    # Получаем данные
+    completed = len(intern.get('completed_topics', []))
+    total = 28  # Всего тем в марафоне
+    marathon_status = intern.get('marathon_status', MarathonStatus.NOT_STARTED)
+
+    # Вычисляем день марафона
+    start_date = intern.get('marathon_start_date')
+    today = moscow_today()
+
+    if start_date:
+        if hasattr(start_date, 'date'):
+            start_date = start_date.date()
+        days_passed = (today - start_date).days
+        marathon_day = min(days_passed + 1, 14)
+        start_date_str = start_date.strftime('%d.%m.%Y')
+    else:
+        marathon_day = 1
+        start_date_str = "не установлена"
+
+    # Напоминания
+    schedule_time = intern.get('schedule_time', '09:00')
+    schedule_time_2 = intern.get('schedule_time_2')
+    if schedule_time_2:
+        reminders_text = f"{schedule_time}, {schedule_time_2}"
+    else:
+        reminders_text = schedule_time
+
+    # Сложность
+    bloom_level = intern.get('bloom_level', 1)
+    complexity_names = {1: "Базовый", 2: "Средний", 3: "Продвинутый"}
+    complexity_text = complexity_names.get(bloom_level, f"Уровень {bloom_level}")
+
+    # Формируем текст
+    if marathon_status == MarathonStatus.COMPLETED:
+        text = "🏃 *Марафон завершён!*\n\n"
+        text += f"Пройдено: {completed}/{total} тем\n\n"
+        text += "Вы можете сбросить марафон и начать заново."
+    else:
+        text = "🏃 *Марафон*\n\n"
+        text += f"День {marathon_day} из 14 | {completed}/{total} тем\n\n"
+        text += "⚙️ *Настройки:*\n"
+
+    # Кнопки
+    buttons = []
+
+    # Дата старта
+    buttons.append([InlineKeyboardButton(
+        text=f"🗓 Старт: {start_date_str}",
+        callback_data="marathon_set_date"
+    )])
+
+    # Напоминания
+    buttons.append([InlineKeyboardButton(
+        text=f"⏰ Напоминания: {reminders_text}",
+        callback_data="marathon_set_reminders"
+    )])
+
+    # Сложность
+    buttons.append([InlineKeyboardButton(
+        text=f"🎯 Сложность: {complexity_text}",
+        callback_data="marathon_set_difficulty"
+    )])
+
+    # Главная кнопка
+    if marathon_status != MarathonStatus.COMPLETED:
+        buttons.append([InlineKeyboardButton(
+            text="▶️ Продолжить",
+            callback_data="marathon_continue"
+        )])
+
+    buttons.append([InlineKeyboardButton(
+        text="« Назад",
+        callback_data="marathon_back_to_mode"
+    )])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    if edit:
+        await message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    else:
+        await message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+
+
+@mode_router.callback_query(F.data == "marathon_continue")
+async def marathon_continue(callback: CallbackQuery):
+    """Продолжить марафон"""
+    await callback.message.edit_text(
+        "✅ *Режим Марафон*\n\n"
+        "Используйте /learn для продолжения обучения.",
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@mode_router.callback_query(F.data == "marathon_back_to_mode")
+async def marathon_back_to_mode(callback: CallbackQuery):
+    """Назад к выбору режима"""
+    await cmd_mode(callback.message)
+    await callback.answer()
+
+
+# ==================== НАСТРОЙКА ДАТЫ СТАРТА ====================
+
+@mode_router.callback_query(F.data == "marathon_set_date")
+async def marathon_set_date(callback: CallbackQuery):
+    """Меню настройки даты старта"""
+    from db.queries.users import moscow_today
+    from datetime import timedelta
+
+    chat_id = callback.message.chat.id
+    intern = await get_intern(chat_id)
+
+    start_date = intern.get('marathon_start_date')
+    today = moscow_today()
+
+    if start_date:
+        if hasattr(start_date, 'date'):
+            start_date = start_date.date()
+        days_passed = (today - start_date).days
+        marathon_day = min(days_passed + 1, 14)
+        current_date_str = start_date.strftime('%d.%m.%Y')
+    else:
+        marathon_day = 0
+        current_date_str = "не установлена"
+
+    completed = len(intern.get('completed_topics', []))
+
+    text = "🗓 *Дата старта марафона*\n\n"
+    text += f"Текущая: {current_date_str}"
+    if start_date:
+        text += f" (день {marathon_day})"
+    text += "\n\n"
+
+    # Кнопки
+    buttons = []
+
+    # Только даты вперёд
+    tomorrow = today + timedelta(days=1)
+    day_after = today + timedelta(days=2)
+
+    buttons.append([InlineKeyboardButton(
+        text=f"📅 Завтра ({tomorrow.strftime('%d.%m')})",
+        callback_data="marathon_date_tomorrow"
+    )])
+    buttons.append([InlineKeyboardButton(
+        text=f"📅 Послезавтра ({day_after.strftime('%d.%m')})",
+        callback_data="marathon_date_day_after"
+    )])
+
+    # Кнопка сброса (если есть прогресс)
+    if completed > 0:
+        buttons.append([InlineKeyboardButton(
+            text="🔄 Сбросить марафон",
+            callback_data="marathon_reset_confirm"
+        )])
+
+    buttons.append([InlineKeyboardButton(
+        text="« Назад",
+        callback_data="marathon_settings_back"
+    )])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await callback.answer()
+
+
+@mode_router.callback_query(F.data == "marathon_date_tomorrow")
+async def marathon_date_tomorrow(callback: CallbackQuery):
+    """Установить дату старта на завтра"""
+    from db.queries.users import moscow_today
+    from datetime import timedelta
+
+    today = moscow_today()
+    new_date = today + timedelta(days=1)
+
+    await update_intern(callback.message.chat.id, marathon_start_date=new_date)
+    await callback.answer(f"Дата старта: {new_date.strftime('%d.%m.%Y')}")
+
+    # Возвращаемся к настройкам
+    intern = await get_intern(callback.message.chat.id)
+    await show_marathon_settings(callback.message, intern, edit=True)
+
+
+@mode_router.callback_query(F.data == "marathon_date_day_after")
+async def marathon_date_day_after(callback: CallbackQuery):
+    """Установить дату старта на послезавтра"""
+    from db.queries.users import moscow_today
+    from datetime import timedelta
+
+    today = moscow_today()
+    new_date = today + timedelta(days=2)
+
+    await update_intern(callback.message.chat.id, marathon_start_date=new_date)
+    await callback.answer(f"Дата старта: {new_date.strftime('%d.%m.%Y')}")
+
+    # Возвращаемся к настройкам
+    intern = await get_intern(callback.message.chat.id)
+    await show_marathon_settings(callback.message, intern, edit=True)
+
+
+# ==================== СБРОС МАРАФОНА ====================
+
+@mode_router.callback_query(F.data == "marathon_reset_confirm")
+async def marathon_reset_confirm(callback: CallbackQuery):
+    """Подтверждение сброса марафона"""
+    chat_id = callback.message.chat.id
+    intern = await get_intern(chat_id)
+
+    completed = len(intern.get('completed_topics', []))
+
+    # Считаем РП
+    from db.queries.answers import get_answers_count_by_type
+    counts = await get_answers_count_by_type(chat_id)
+    work_products = counts.get('work_product', 0)
+
+    text = "⚠️ *Сбросить марафон?*\n\n"
+    text += "Будет удалено:\n"
+    text += f"• {completed} пройденных тем\n"
+    text += f"• {work_products} рабочих продуктов\n"
+    text += "• Прогресс по дням\n\n"
+    text += "_Статистика Ленты сохранится._"
+
+    buttons = [
+        [
+            InlineKeyboardButton(text="🔄 Да, сбросить", callback_data="marathon_reset_do"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="marathon_settings_back")
+        ]
+    ]
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await callback.answer()
+
+
+@mode_router.callback_query(F.data == "marathon_reset_do")
+async def marathon_reset_do(callback: CallbackQuery):
+    """Выполнить сброс марафона"""
+    from db.queries.users import moscow_today
+
+    chat_id = callback.message.chat.id
+    today = moscow_today()
+
+    # Сбрасываем прогресс марафона
+    await update_intern(chat_id,
+        completed_topics=[],
+        current_topic_index=0,
+        marathon_start_date=today,
+        marathon_status=MarathonStatus.ACTIVE,
+        topics_today=0,
+        topics_at_current_bloom=0,
+    )
+
+    await callback.answer("Марафон сброшен!")
+
+    await callback.message.edit_text(
+        "✅ *Марафон сброшен!*\n\n"
+        f"Новая дата старта: {today.strftime('%d.%m.%Y')}\n\n"
+        "Используйте /learn для начала обучения.",
+        parse_mode="Markdown"
+    )
+
+
+@mode_router.callback_query(F.data == "marathon_settings_back")
+async def marathon_settings_back(callback: CallbackQuery):
+    """Назад к настройкам марафона"""
+    intern = await get_intern(callback.message.chat.id)
+    await show_marathon_settings(callback.message, intern, edit=True)
+    await callback.answer()
+
+
+# ==================== НАСТРОЙКА НАПОМИНАНИЙ ====================
+
+@mode_router.callback_query(F.data == "marathon_set_reminders")
+async def marathon_set_reminders(callback: CallbackQuery):
+    """Меню настройки напоминаний"""
+    chat_id = callback.message.chat.id
+    intern = await get_intern(chat_id)
+
+    schedule_time = intern.get('schedule_time', '09:00')
+    schedule_time_2 = intern.get('schedule_time_2')
+
+    text = "⏰ *Напоминания*\n\n"
+    text += f"Сейчас: {schedule_time}"
+    if schedule_time_2:
+        text += f", {schedule_time_2}"
+    text += "\n"
+
+    buttons = []
+
+    # Изменить первое время
+    buttons.append([InlineKeyboardButton(
+        text=f"🕐 Изменить время ({schedule_time})",
+        callback_data="marathon_reminder_1"
+    )])
+
+    # Второе напоминание
+    if schedule_time_2:
+        buttons.append([InlineKeyboardButton(
+            text=f"🕐 Второе: {schedule_time_2} ❌",
+            callback_data="marathon_reminder_2_remove"
+        )])
+    else:
+        buttons.append([InlineKeyboardButton(
+            text="➕ Добавить второе",
+            callback_data="marathon_reminder_2_add"
+        )])
+
+    buttons.append([InlineKeyboardButton(
+        text="« Назад",
+        callback_data="marathon_settings_back"
+    )])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await callback.answer()
+
+
+@mode_router.callback_query(F.data == "marathon_reminder_1")
+async def marathon_reminder_1(callback: CallbackQuery):
+    """Выбор первого времени напоминания"""
+    await show_time_picker(callback, "reminder_1")
+
+
+@mode_router.callback_query(F.data == "marathon_reminder_2_add")
+async def marathon_reminder_2_add(callback: CallbackQuery):
+    """Добавить второе напоминание"""
+    await show_time_picker(callback, "reminder_2")
+
+
+@mode_router.callback_query(F.data == "marathon_reminder_2_remove")
+async def marathon_reminder_2_remove(callback: CallbackQuery):
+    """Удалить второе напоминание"""
+    await update_intern(callback.message.chat.id, schedule_time_2=None)
+    await callback.answer("Второе напоминание удалено")
+
+    # Возвращаемся к настройкам напоминаний
+    intern = await get_intern(callback.message.chat.id)
+    await marathon_set_reminders(callback)
+
+
+async def show_time_picker(callback: CallbackQuery, target: str):
+    """Показать выбор времени"""
+    times = ["06:00", "07:00", "08:00", "09:00", "10:00", "11:00",
+             "12:00", "18:00", "19:00", "20:00", "21:00", "22:00"]
+
+    buttons = []
+    row = []
+    for i, time in enumerate(times):
+        row.append(InlineKeyboardButton(
+            text=time,
+            callback_data=f"marathon_time_{target}_{time}"
+        ))
+        if len(row) == 3:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+
+    buttons.append([InlineKeyboardButton(
+        text="« Назад",
+        callback_data="marathon_set_reminders"
+    )])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text(
+        "⏰ Выберите время:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@mode_router.callback_query(F.data.startswith("marathon_time_"))
+async def marathon_time_selected(callback: CallbackQuery):
+    """Обработка выбора времени"""
+    parts = callback.data.split("_")
+    # marathon_time_reminder_1_09:00 или marathon_time_reminder_2_21:00
+    target = parts[2] + "_" + parts[3]  # reminder_1 или reminder_2
+    time = parts[4]
+
+    if target == "reminder_1":
+        await update_intern(callback.message.chat.id, schedule_time=time)
+    else:
+        await update_intern(callback.message.chat.id, schedule_time_2=time)
+
+    await callback.answer(f"Время установлено: {time}")
+
+    # Возвращаемся к настройкам марафона
+    intern = await get_intern(callback.message.chat.id)
+    await show_marathon_settings(callback.message, intern, edit=True)
+
+
+# ==================== НАСТРОЙКА СЛОЖНОСТИ ====================
+
+@mode_router.callback_query(F.data == "marathon_set_difficulty")
+async def marathon_set_difficulty(callback: CallbackQuery):
+    """Меню настройки сложности"""
+    chat_id = callback.message.chat.id
+    intern = await get_intern(chat_id)
+
+    bloom_level = intern.get('bloom_level', 1)
+
+    text = "🎯 *Сложность вопросов*\n\n"
+
+    levels = [
+        (1, "Базовый", "понимание основ"),
+        (2, "Средний", "применение на практике"),
+        (3, "Продвинутый", "анализ и синтез"),
+    ]
+
+    current_name = ""
+    for lvl, name, desc in levels:
+        mark = " ✓" if lvl == bloom_level else ""
+        text += f"*{lvl}. {name}*{mark} — {desc}\n"
+        if lvl == bloom_level:
+            current_name = name
+
+    text += f"\nСейчас: *{current_name}*"
+
+    buttons = [
+        [InlineKeyboardButton(text="1️⃣ Базовый", callback_data="marathon_diff_1")],
+        [InlineKeyboardButton(text="2️⃣ Средний", callback_data="marathon_diff_2")],
+        [InlineKeyboardButton(text="3️⃣ Продвинутый", callback_data="marathon_diff_3")],
+        [InlineKeyboardButton(text="« Назад", callback_data="marathon_settings_back")]
+    ]
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await callback.answer()
+
+
+@mode_router.callback_query(F.data.startswith("marathon_diff_"))
+async def marathon_difficulty_selected(callback: CallbackQuery):
+    """Обработка выбора сложности"""
+    level = int(callback.data.split("_")[2])
+
+    await update_intern(callback.message.chat.id, bloom_level=level)
+
+    names = {1: "Базовый", 2: "Средний", 3: "Продвинутый"}
+    await callback.answer(f"Сложность: {names.get(level)}")
+
+    # Возвращаемся к настройкам марафона
+    intern = await get_intern(callback.message.chat.id)
+    await show_marathon_settings(callback.message, intern, edit=True)
 
 
 @mode_router.callback_query(F.data == "mode_feed")
