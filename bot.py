@@ -1075,18 +1075,17 @@ def get_total_topics() -> int:
 
 def get_marathon_day(intern: dict) -> int:
     """Получить текущий день марафона для участника"""
-    # ВРЕМЕННО: для тестирования возвращаем максимальный день
-    # PRODUCTION CODE (восстановить после тестирования):
-    # start_date = intern.get('marathon_start_date')
-    # if not start_date:
-    #     return 0
-    # today = moscow_today()
-    # if isinstance(start_date, datetime):
-    #     start_date = start_date.date()
-    # days_passed = (today - start_date).days
-    # return min(days_passed + 1, MARATHON_DAYS)  # День 1-14
+    start_date = intern.get('marathon_start_date')
+    if not start_date:
+        # Если дата старта не установлена, вычисляем по прогрессу
+        topic_index = intern.get('current_topic_index', 0)
+        return (topic_index // 2) + 1 if topic_index > 0 else 1
 
-    return MARATHON_DAYS  # ВРЕМЕННО: все дни открыты для тестирования
+    today = moscow_today()
+    if isinstance(start_date, datetime):
+        start_date = start_date.date()
+    days_passed = (today - start_date).days
+    return min(days_passed + 1, MARATHON_DAYS)  # День 1-14
 
 def get_topics_for_day(day: int) -> List[dict]:
     """Получить темы для конкретного дня марафона"""
@@ -2329,6 +2328,8 @@ async def send_theory_topic(chat_id: int, topic: dict, intern: dict, state: FSMC
     marathon_day = get_marathon_day(intern)
     bloom = BLOOM_LEVELS.get(intern['bloom_level'], BLOOM_LEVELS[1])
 
+    # Показываем, что бот работает
+    await bot.send_chat_action(chat_id=chat_id, action="typing")
     await bot.send_message(chat_id, "⏳ Генерирую персональный материал...")
 
     content = await claude.generate_content(topic, intern, marathon_day=marathon_day, mcp_client=mcp_guides, knowledge_client=mcp_knowledge)
@@ -2365,6 +2366,10 @@ async def send_theory_topic(chat_id: int, topic: dict, intern: dict, state: FSMC
 async def send_practice_topic(chat_id: int, topic: dict, intern: dict, state: FSMContext, bot: Bot):
     """Отправка практической темы"""
     marathon_day = get_marathon_day(intern)
+
+    # Показываем, что бот работает
+    await bot.send_chat_action(chat_id=chat_id, action="typing")
+    await bot.send_message(chat_id, "⏳ Готовлю практическое задание...")
 
     # Генерируем краткое введение
     intro = await claude.generate_practice_intro(topic, intern, marathon_day=marathon_day)

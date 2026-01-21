@@ -211,6 +211,10 @@ async def show_today_session(message: Message, engine: FeedEngine, state: FSMCon
     """Показывает сегодняшнюю сессию"""
     try:
         logger.info("show_today_session: получаем сессию")
+
+        # Показываем индикатор "печатает..." пока генерируем контент
+        await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
+
         session, intro_msg = await engine.get_today_session()
 
         if not session:
