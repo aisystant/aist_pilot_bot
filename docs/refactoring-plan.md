@@ -1,0 +1,166 @@
+# План рефакторинга терминологии
+
+> Этот документ описывает изменения для приведения кода к терминологии из `ontology.md`.
+
+---
+
+## Фаза 1: Документация (выполнено)
+
+- [x] Создать `docs/ontology.md` — единый источник терминов
+- [x] Обновить `README.md` — добавить ключевые термины и ссылку
+- [x] Создать `CLAUDE.md` — инструкции для ИИ
+
+---
+
+## Фаза 2: Локализация и сообщения пользователю
+
+### Файл: `locales.py`
+
+| Текущий термин | Новый термин | Контекст |
+|----------------|--------------|----------|
+| "теория" | "урок" | Сообщения о теоретической части |
+| "практика" | "задание" | Сообщения о практической части |
+| "контент" | "дайджест" | Сообщения в Ленте |
+| "сессия" | "дайджест" | Ежедневный материал Ленты |
+| "уровень сложности" | "сложность" | Описание уровней |
+
+### Файл: `config/settings.py`
+
+| Текущее | Новое | Строки |
+|---------|-------|--------|
+| `BLOOM_LEVELS` | `COMPLEXITY_LEVELS` | ~79-143 |
+| `bloom_level` | `complexity` | По всему файлу |
+
+---
+
+## Фаза 3: Модели базы данных
+
+### Файл: `db/models.py`
+
+| Таблица/поле | Текущее | Новое |
+|--------------|---------|-------|
+| `interns.bloom_level` | bloom_level | complexity |
+| `answers.answer_type` | 'theory_answer' | 'lesson_answer' |
+| `answers.answer_type` | 'work_product' | 'task_answer' |
+| `feed_sessions` | feed_sessions | digests |
+| `feed_sessions.content` | content | digest_content |
+
+**Важно**: Требуется миграция БД!
+
+---
+
+## Фаза 4: Основной код бота
+
+### Файл: `bot.py`
+
+| Область | Текущее | Новое | Строки |
+|---------|---------|-------|--------|
+| Тип темы | `topic['type'] == 'theory'` | `topic['type'] == 'lesson'` | ~259-262, ~792 |
+| Тип темы | `topic['type'] == 'practice'` | `topic['type'] == 'task'` | ~259-262, ~893 |
+| Переменные | `theory_content` | `lesson_text` | Множество |
+| Переменные | `practice_content` | `task_text` | Множество |
+| Функции | `send_theory()` | `send_lesson()` | ~1500+ |
+| Функции | `generate_question()` | `generate_lesson_question()` | ~1200+ |
+| Состояния | `waiting_for_answer` | `waiting_for_lesson_answer` | ~259 |
+| Состояния | `waiting_for_work_product` | `waiting_for_task_answer` | ~260 |
+
+### Файл: `engines/feed/engine.py`
+
+| Текущее | Новое |
+|---------|-------|
+| `generate_session_content()` | `generate_digest()` |
+| `content` | `digest_content` |
+| `reflection_prompt` | `digest_question` |
+
+### Файл: `engines/feed/handlers.py`
+
+| Текущее | Новое | Строки |
+|---------|-------|--------|
+| `FeedStates.reading_content` | `FeedStates.reading_digest` | ~33 |
+| `show_today_session()` | `show_today_digest()` | ~243+ |
+| `fixation` | `fixation` (без изменений) | — |
+
+---
+
+## Фаза 5: Структура тем
+
+### Файл: `knowledge_structure.yaml`
+
+| Текущее | Новое |
+|---------|-------|
+| `type: "theory"` | `type: "lesson"` |
+| `type: "practice"` | `type: "task"` |
+| `day-1-theory` | `day-1-lesson` |
+| `day-1-practice` | `day-1-task` |
+
+---
+
+## Фаза 6: Запросы к БД
+
+### Файлы в `db/queries/`
+
+| Файл | Изменения |
+|------|-----------|
+| `answers.py` | `theory_answer` → `lesson_answer`, `work_product` → `task_answer` |
+| `users.py` | `bloom_level` → `complexity` |
+| `feed.py` | `feed_sessions` → `digests`, `session_date` → `digest_date` |
+| `activity.py` | Типы активности |
+
+---
+
+## Порядок выполнения
+
+1. **Сначала**: Обновить `locales.py` — изменения видны пользователю
+2. **Затем**: Обновить `config/settings.py` — константы
+3. **Параллельно**: Подготовить миграцию БД (не применять!)
+4. **После тестирования**: Применить миграцию + обновить модели
+5. **Далее**: Обновить `bot.py` и `engines/`
+6. **В конце**: Обновить `knowledge_structure.yaml`
+
+---
+
+## Риски и митигация
+
+| Риск | Митигация |
+|------|-----------|
+| Сломается БД | Создать бэкап, тестировать на копии |
+| Несовместимость старых данных | Миграция с обратной совместимостью |
+| Пропущенные места в коде | Поиск по репо всех вхождений |
+
+---
+
+## Команды для поиска вхождений
+
+```bash
+# Найти все "theory" в коде
+grep -rn "theory" --include="*.py" --include="*.yaml"
+
+# Найти все "practice" в коде
+grep -rn "practice" --include="*.py" --include="*.yaml"
+
+# Найти все "bloom" в коде
+grep -rn "bloom" --include="*.py"
+
+# Найти все "session" в контексте ленты
+grep -rn "session" engines/feed/
+
+# Найти все "content" в контексте ленты
+grep -rn "content" engines/feed/
+```
+
+---
+
+## Оценка объёма
+
+| Компонент | Файлов | Сложность |
+|-----------|--------|-----------|
+| Документация | 3 | Низкая (выполнено) |
+| Локализация | 1 | Низкая |
+| Настройки | 1 | Низкая |
+| Модели БД | 1 + миграция | Средняя |
+| Основной бот | 1 | Высокая |
+| Движок ленты | 3 | Средняя |
+| Запросы БД | 4-5 | Средняя |
+| Структура тем | 1 | Низкая |
+
+**Общая оценка**: ~15-20 файлов, средняя сложность
