@@ -41,16 +41,28 @@ def _load_test_env():
 _load_test_env()
 
 
+# Конфигурация pytest-asyncio для использования одного event loop на всю сессию
 @pytest.fixture(scope="session")
-def event_loop():
-    """Создаёт event loop для всей сессии тестов"""
-    loop = asyncio.new_event_loop()
+def event_loop_policy():
+    """Возвращает политику event loop"""
+    return asyncio.DefaultEventLoopPolicy()
+
+
+@pytest.fixture(scope="session")
+def event_loop(event_loop_policy):
+    """Создаёт единый event loop для всей сессии тестов.
+
+    Это критически важно для Telethon, который требует один и тот же
+    event loop на протяжении всего соединения.
+    """
+    loop = event_loop_policy.new_event_loop()
+    asyncio.set_event_loop(loop)
     yield loop
     loop.close()
 
 
-@pytest_asyncio.fixture(scope="session")
-async def bot_client() -> AsyncGenerator[BotTestClient, None]:
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def bot_client(event_loop) -> AsyncGenerator[BotTestClient, None]:
     """
     Фикстура клиента бота на всю сессию тестов.
 
@@ -64,6 +76,7 @@ async def bot_client() -> AsyncGenerator[BotTestClient, None]:
         api_hash=os.getenv("TEST_API_HASH", ""),
         session_name=os.getenv("TEST_SESSION", "e2e_test_session"),
         bot_username=os.getenv("TEST_BOT_USERNAME", ""),
+        loop=event_loop,  # Передаём event loop явно
     )
 
     # Проверяем конфигурацию
@@ -78,7 +91,7 @@ async def bot_client() -> AsyncGenerator[BotTestClient, None]:
     await client.stop()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def fresh_client(bot_client: BotTestClient) -> BotTestClient:
     """
     Фикстура для чистого теста - очищает чат перед каждым тестом.
