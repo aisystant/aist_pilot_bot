@@ -1,0 +1,100 @@
+name: Scenario Compliance Check
+
+on:
+  schedule:
+    # Запуск ежедневно в 06:00 MSK (03:00 UTC)
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    # Ручной запуск из интерфейса GitHub
+
+jobs:
+  check-scenarios:
+    name: Check Code vs Scenarios
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pyyaml
+
+      - name: Run scenario compliance check
+        id: check
+        run: |
+          python -m tests.scenario_compliance.scripts.checker --json > result.json
+          cat result.json
+
+          # Извлекаем данные для использования в следующих шагах
+          COVERAGE=$(jq -r '.coverage' result.json)
+          STATUS=$(jq -r '.status' result.json)
+          REPORT_PATH=$(jq -r '.report_path' result.json)
+
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "report_path=$REPORT_PATH" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Generate report file
+        run: |
+          python -m tests.scenario_compliance.scripts.checker
+
+      - name: Upload report as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scenario-compliance-report
+          path: tests/scenario_compliance/reports/*.md
+          retention-days: 90
+
+      - name: Commit report to repository
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          git add tests/scenario_compliance/reports/*.md
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            DATE=$(date +%Y-%m-%d)
+            git commit -m "chore: add scenario compliance report for $DATE"
+            git push
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create summary
+        run: |
+          COVERAGE=${{ steps.check.outputs.coverage }}
+          STATUS=${{ steps.check.outputs.status }}
+
+          if [ "$STATUS" = "green" ]; then
+            EMOJI="🟢"
+            MESSAGE="Код хорошо соответствует сценариям"
+          elif [ "$STATUS" = "yellow" ]; then
+            EMOJI="🟡"
+            MESSAGE="Требует внимания: некоторые вспомогательные сценарии не покрыты"
+          else
+            EMOJI="🔴"
+            MESSAGE="Критично: основные сценарии под угрозой"
+          fi
+
+          echo "## $EMOJI Проверка соответствия сценариям" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Покрытие:** ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "$MESSAGE" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Подробный отчёт доступен в артефактах." >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if coverage is critical
+        if: steps.check.outputs.status == 'red'
+        run: |
+          echo "❌ Покрытие сценариев критически низкое: ${{ steps.check.outputs.coverage }}%"
+          exit 1
