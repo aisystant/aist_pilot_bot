@@ -1903,7 +1903,7 @@ async def show_full_progress(callback: CallbackQuery):
 
         # Прогресс по неделям
         weeks = get_sections_progress(intern.get('completed_topics', []))
-        weeks_text = ""
+        weeks_text = "*Недели:*\n"
         for i, week in enumerate(weeks):
             w_pct = int((week['completed'] / week['total']) * 100) if week['total'] > 0 else 0
             w_filled = max(1, w_pct // 10) if w_pct > 0 else 0
@@ -1923,7 +1923,7 @@ async def show_full_progress(callback: CallbackQuery):
 
         name = intern.get('name', 'Пользователь')
         text = f"📊 *Полный отчёт с {date_str}: {name}*\n\n"
-        text += f"Активных дней: {total_active} из {days_since}\n\n"
+        text += f"Активных дней: {total_active} из {marathon_day}\n\n"
 
         # Марафон
         text += f"🏃 *Марафон*\n"
@@ -1935,9 +1935,24 @@ async def show_full_progress(callback: CallbackQuery):
         # Лента
         text += f"📚 *Лента*\n"
         text += f"Дайджестов: {total_stats.get('total_digests', 0)}. Фиксаций: {total_stats.get('total_fixations', 0)}\n"
-        text += f"Темы: {feed_topics_text}"
+        text += f"Темы: {feed_topics_text}\n\n"
+
+        # Подсказка о пропущенных днях
+        missed_days = marathon_day - total_active
+        if missed_days > 0 and done < total:
+            text += f"⚠️ _Пропущено дней: {missed_days}. Продолжите обучение, чтобы наверстать!_"
+
+        # Кнопки
+        from config import Mode
+        current_mode = intern.get('mode', Mode.MARATHON)
+
+        if current_mode == Mode.FEED:
+            continue_btn = InlineKeyboardButton(text="📖 Получить дайджест", callback_data="feed_get_digest")
+        else:
+            continue_btn = InlineKeyboardButton(text="📚 Продолжить обучение", callback_data="learn")
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [continue_btn],
             [InlineKeyboardButton(text="« Назад", callback_data="progress_back")]
         ])
 
