@@ -1,7 +1,7 @@
 """
 E2E тесты Ленты (Класс 3: Лента).
 
-Сценарии 3.1 - 3.14 из tests/testing-scenarios.md
+Сценарии 3.1 - 3.14 из tests/test-manual/testing-scenarios.md
 
 Запуск:
     pytest tests/e2e/test_03_feed.py -v

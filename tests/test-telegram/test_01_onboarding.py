@@ -1,7 +1,7 @@
 """
 E2E тесты онбординга (Класс 1: Регистрация и онбординг).
 
-Сценарии 1.1 - 1.12 из tests/testing-scenarios.md
+Сценарии 1.1 - 1.12 из tests/test-manual/testing-scenarios.md
 
 Запуск:
     pytest tests/e2e/test_01_onboarding.py -v
