@@ -1861,7 +1861,7 @@ async def cmd_progress(message: Message):
     total_wp_week = marathon_stats.get('work_products', 0)
 
     text = f"📊 *Прогресс: {intern['name']}*\n\n"
-    text += f"Активных дней за неделю: {days_active_week}\n\n"
+    text += f"Активных дней за неделю (Марафон+Лента): {days_active_week}\n\n"
 
     # Марафон
     text += f"🏃 *Марафон* (день {marathon_day}/{MARATHON_DAYS})\n"
