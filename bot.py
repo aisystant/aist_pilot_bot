@@ -1903,7 +1903,7 @@ async def show_full_progress(callback: CallbackQuery):
 
         # Прогресс по неделям
         weeks = get_sections_progress(intern.get('completed_topics', []))
-        weeks_text = ""
+        weeks_text = "*Недели:*\n"
         for i, week in enumerate(weeks):
             w_pct = int((week['completed'] / week['total']) * 100) if week['total'] > 0 else 0
             w_filled = max(1, w_pct // 10) if w_pct > 0 else 0
@@ -1923,7 +1923,7 @@ async def show_full_progress(callback: CallbackQuery):
 
         name = intern.get('name', 'Пользователь')
         text = f"📊 *Полный отчёт с {date_str}: {name}*\n\n"
-        text += f"Активных дней: {total_active} из {days_since}\n\n"
+        text += f"Активных дней: {total_active} из {marathon_day}\n\n"
 
         # Марафон
         text += f"🏃 *Марафон*\n"
@@ -1935,9 +1935,24 @@ async def show_full_progress(callback: CallbackQuery):
         # Лента
         text += f"📚 *Лента*\n"
         text += f"Дайджестов: {total_stats.get('total_digests', 0)}. Фиксаций: {total_stats.get('total_fixations', 0)}\n"
-        text += f"Темы: {feed_topics_text}"
+        text += f"Темы: {feed_topics_text}\n\n"
+
+        # Подсказка о пропущенных днях
+        missed_days = marathon_day - total_active
+        if missed_days > 0 and done < total:
+            text += f"⚠️ _Пропущено дней: {missed_days}. Продолжите обучение, чтобы наверстать!_"
+
+        # Кнопки
+        from config import Mode
+        current_mode = intern.get('mode', Mode.MARATHON)
+
+        if current_mode == Mode.FEED:
+            continue_btn = InlineKeyboardButton(text="📖 Получить дайджест", callback_data="feed_get_digest")
+        else:
+            continue_btn = InlineKeyboardButton(text="📚 Продолжить обучение", callback_data="learn")
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [continue_btn],
             [InlineKeyboardButton(text="« Назад", callback_data="progress_back")]
         ])
 
@@ -2430,6 +2445,8 @@ async def on_save_schedule(message: Message, state: FSMContext):
 async def on_answer(message: Message, state: FSMContext, bot: Bot):
     chat_id = message.chat.id
     text = message.text or ''
+    current_state = await state.get_state()
+    logger.info(f"[on_answer] ВЫЗВАН для chat_id={chat_id}, state={current_state}, text={text[:50] if text else '[no text]'}")
     intern = await get_intern(chat_id)
     lang = intern.get('language', 'ru') if intern else 'ru'
 
@@ -2458,6 +2475,9 @@ async def on_answer(message: Message, state: FSMContext, bot: Bot):
                 logger.error(f"Ошибка при обработке вопроса: {e}")
                 await progress_msg.delete()
                 await message.answer(t('errors.try_again', lang))
+            # Проверяем, что состояние сохранилось
+            final_state = await state.get_state()
+            logger.info(f"[on_answer] После обработки вопроса, state={final_state} для chat_id={chat_id}")
             return  # Остаёмся в состоянии waiting_for_answer
 
     if len(text.strip()) < 20:
@@ -2765,7 +2785,10 @@ async def on_skip_topic(callback: CallbackQuery, state: FSMContext):
 async def on_work_product(message: Message, state: FSMContext):
     """Обработка отправки рабочего продукта"""
     text = message.text or ''
-    intern = await get_intern(message.chat.id)
+    chat_id = message.chat.id
+    current_state = await state.get_state()
+    logger.info(f"[on_work_product] ВЫЗВАН для chat_id={chat_id}, state={current_state}, text={text[:50] if text else '[no text]'}")
+    intern = await get_intern(chat_id)
     lang = intern.get('language', 'ru') if intern else 'ru'
 
     # Проверяем, это вопрос к ИИ (начинается с ?)
@@ -3278,6 +3301,7 @@ async def scheduled_check():
     if chat_ids:
         logger.info(f"[Scheduler] {time_str} MSK — найдено {len(chat_ids)} пользователей для отправки")
         bot = Bot(token=BOT_TOKEN)
+        await bot.get_me()  # Инициализируем bot.id для FSMContext
         for chat_id in chat_ids:
             try:
                 await send_scheduled_topic(chat_id, bot)
@@ -3317,26 +3341,26 @@ async def on_unknown_message(message: Message, state: FSMContext):
     chat_id = message.chat.id
     logger.info(f"[UNKNOWN] on_unknown_message вызван для chat_id={chat_id}, state={current_state}, text={text[:50] if text else '[no text]'}")
 
-    # Если пользователь в состоянии LearningStates — передаём в соответствующий обработчик
-    # (это workaround для случаев, когда StateFilter по какой-то причине не срабатывает)
-    if current_state == "LearningStates:waiting_for_answer":
-        logger.info(f"[FALLBACK] Передаём сообщение в on_answer для {chat_id}")
-        await on_answer(message, state, message.bot)
-        return
-
-    if current_state == "LearningStates:waiting_for_work_product":
-        logger.info(f"[FALLBACK] Передаём сообщение в on_work_product для {chat_id}")
-        await on_work_product(message, state)
-        return
-
-    if current_state == "LearningStates:waiting_for_bonus_answer":
-        logger.info(f"[FALLBACK] Передаём сообщение в on_bonus_answer для {chat_id}")
-        await on_bonus_answer(message, state, message.bot)
-        return
-
-    # Если пользователь в другом состоянии — логируем для отладки
+    # Если пользователь в каком-то состоянии — пробуем обработать вручную
     if current_state:
-        logger.warning(f"Unhandled message in state {current_state} from user {chat_id}: {text[:50] if text else '[no text]'}")
+        logger.warning(f"[UNKNOWN] Message in state {current_state} reached fallback. Attempting manual routing for chat_id={chat_id}")
+
+        # Попробуем обработать состояния обучения вручную
+        if current_state == LearningStates.waiting_for_answer.state:
+            logger.info(f"[UNKNOWN] Routing to on_answer for chat_id={chat_id}")
+            await on_answer(message, state, message.bot)
+            return
+        elif current_state == LearningStates.waiting_for_work_product.state:
+            logger.info(f"[UNKNOWN] Routing to on_work_product for chat_id={chat_id}")
+            await on_work_product(message, state)
+            return
+        elif current_state == LearningStates.waiting_for_bonus_answer.state:
+            logger.info(f"[UNKNOWN] Routing to on_bonus_answer for chat_id={chat_id}")
+            await on_bonus_answer(message, state, message.bot)
+            return
+
+        # Неизвестное состояние — просто игнорируем
+        logger.warning(f"[UNKNOWN] Unknown state {current_state} for chat_id={chat_id}, ignoring message")
         return
 
     # Пользователь не в FSM-состоянии
