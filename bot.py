@@ -1841,7 +1841,17 @@ async def cmd_progress(message: Message):
     text += f"Темы: {feed_topics_text}"
 
     # Кнопки
+    from config import Mode
+    current_mode = intern.get('mode', Mode.MARATHON)
+
+    # Кнопка продолжения зависит от режима
+    if current_mode == Mode.FEED:
+        continue_btn = InlineKeyboardButton(text="📖 Получить дайджест", callback_data="feed_get_digest")
+    else:
+        continue_btn = InlineKeyboardButton(text="📚 Продолжить обучение", callback_data="learn")
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [continue_btn],
         [
             InlineKeyboardButton(text="📊 Полный отчёт", callback_data="progress_full"),
             InlineKeyboardButton(text="⚙️ Настройки", callback_data="go_update")
@@ -1967,6 +1977,14 @@ async def go_to_update(callback: CallbackQuery):
     # Имитируем команду /update
     await callback.message.delete()
     await callback.message.answer("/update — настройки профиля")
+
+
+@router.callback_query(F.data == "go_progress")
+async def go_to_progress(callback: CallbackQuery):
+    """Переход к прогрессу"""
+    await callback.answer()
+    await cmd_progress(callback.message)
+
 
 @router.message(Command("profile"))
 async def cmd_profile(message: Message):
@@ -2801,22 +2819,28 @@ async def on_work_product(message: Message, state: FSMContext):
 
     if day_completed >= len(day_topics):
         # День полностью завершён
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📊 Посмотреть прогресс", callback_data="go_progress")]
+        ])
         await message.answer(
             f"🎉 *День {marathon_day} завершён!*\n\n"
             f"✅ Теория пройдена\n"
             f"✅ Практика выполнена\n"
             f"📝 РП: {text.strip()}\n\n"
             f"{progress_bar(done, total)}\n\n"
-            f"Отличная работа! Возвращайтесь завтра за новыми темами.\n\n"
-            f"/progress — посмотреть прогресс",
+            f"Отличная работа! Возвращайтесь завтра за новыми темами.",
+            reply_markup=keyboard,
             parse_mode="Markdown"
         )
     else:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📚 Следующая тема", callback_data="learn")]
+        ])
         await message.answer(
             f"✅ *Практика засчитана!*\n\n"
             f"📝 РП: {text.strip()}\n\n"
-            f"{progress_bar(done, total)}\n\n"
-            f"/learn — следующая тема",
+            f"{progress_bar(done, total)}",
+            reply_markup=keyboard,
             parse_mode="Markdown"
         )
 
