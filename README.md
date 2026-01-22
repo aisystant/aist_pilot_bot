@@ -178,7 +178,7 @@ Telegram-бот [@aist_track_bot](https://t.me/aist_track_bot) с персона
 
 Все замечания, баги и предложения отправляйте:
 - Telegram: [@tserentserenov](https://t.me/tserentserenov)
-- GitHub Issues: [github.com/aisystant/aist_track_bot/issues](https://github.com/aisystant/aist_track_bot/issues)
+- GitHub Issues: [github.com/aisystant/aist_bot/issues](https://github.com/aisystant/aist_bot/issues)
 
 ### Как сообщать о проблемах
 
@@ -212,8 +212,8 @@ Telegram ←→ Bot (Python/aiogram) ←→ PostgreSQL
 ### Запуск
 
 ```bash
-git clone https://github.com/aisystant/aist_track_bot
-cd aist_track_bot
+git clone https://github.com/aisystant/aist_bot
+cd aist_bot
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env  # Заполнить токены
