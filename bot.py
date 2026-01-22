@@ -3317,7 +3317,24 @@ async def on_unknown_message(message: Message, state: FSMContext):
     chat_id = message.chat.id
     logger.info(f"[UNKNOWN] on_unknown_message вызван для chat_id={chat_id}, state={current_state}, text={text[:50] if text else '[no text]'}")
 
-    # Если пользователь в каком-то состоянии — логируем для отладки
+    # Если пользователь в состоянии LearningStates — передаём в соответствующий обработчик
+    # (это workaround для случаев, когда StateFilter по какой-то причине не срабатывает)
+    if current_state == "LearningStates:waiting_for_answer":
+        logger.info(f"[FALLBACK] Передаём сообщение в on_answer для {chat_id}")
+        await on_answer(message, state, message.bot)
+        return
+
+    if current_state == "LearningStates:waiting_for_work_product":
+        logger.info(f"[FALLBACK] Передаём сообщение в on_work_product для {chat_id}")
+        await on_work_product(message, state)
+        return
+
+    if current_state == "LearningStates:waiting_for_bonus_answer":
+        logger.info(f"[FALLBACK] Передаём сообщение в on_bonus_answer для {chat_id}")
+        await on_bonus_answer(message, state, message.bot)
+        return
+
+    # Если пользователь в другом состоянии — логируем для отладки
     if current_state:
         logger.warning(f"Unhandled message in state {current_state} from user {chat_id}: {text[:50] if text else '[no text]'}")
         return
