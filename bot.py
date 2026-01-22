@@ -2430,6 +2430,8 @@ async def on_save_schedule(message: Message, state: FSMContext):
 async def on_answer(message: Message, state: FSMContext, bot: Bot):
     chat_id = message.chat.id
     text = message.text or ''
+    current_state = await state.get_state()
+    logger.info(f"[on_answer] ВЫЗВАН для chat_id={chat_id}, state={current_state}, text={text[:50] if text else '[no text]'}")
     intern = await get_intern(chat_id)
     lang = intern.get('language', 'ru') if intern else 'ru'
 
@@ -2458,6 +2460,9 @@ async def on_answer(message: Message, state: FSMContext, bot: Bot):
                 logger.error(f"Ошибка при обработке вопроса: {e}")
                 await progress_msg.delete()
                 await message.answer(t('errors.try_again', lang))
+            # Проверяем, что состояние сохранилось
+            final_state = await state.get_state()
+            logger.info(f"[on_answer] После обработки вопроса, state={final_state} для chat_id={chat_id}")
             return  # Остаёмся в состоянии waiting_for_answer
 
     if len(text.strip()) < 20:
@@ -2765,7 +2770,10 @@ async def on_skip_topic(callback: CallbackQuery, state: FSMContext):
 async def on_work_product(message: Message, state: FSMContext):
     """Обработка отправки рабочего продукта"""
     text = message.text or ''
-    intern = await get_intern(message.chat.id)
+    chat_id = message.chat.id
+    current_state = await state.get_state()
+    logger.info(f"[on_work_product] ВЫЗВАН для chat_id={chat_id}, state={current_state}, text={text[:50] if text else '[no text]'}")
+    intern = await get_intern(chat_id)
     lang = intern.get('language', 'ru') if intern else 'ru'
 
     # Проверяем, это вопрос к ИИ (начинается с ?)
@@ -3313,9 +3321,26 @@ async def on_unknown_message(message: Message, state: FSMContext):
     chat_id = message.chat.id
     logger.info(f"[UNKNOWN] on_unknown_message вызван для chat_id={chat_id}, state={current_state}, text={text[:50] if text else '[no text]'}")
 
-    # Если пользователь в каком-то состоянии — логируем для отладки
+    # Если пользователь в каком-то состоянии — пробуем обработать вручную
     if current_state:
-        logger.warning(f"Unhandled message in state {current_state} from user {chat_id}: {text[:50] if text else '[no text]'}")
+        logger.warning(f"[UNKNOWN] Message in state {current_state} reached fallback. Attempting manual routing for chat_id={chat_id}")
+
+        # Попробуем обработать состояния обучения вручную
+        if current_state == LearningStates.waiting_for_answer.state:
+            logger.info(f"[UNKNOWN] Routing to on_answer for chat_id={chat_id}")
+            await on_answer(message, state, message.bot)
+            return
+        elif current_state == LearningStates.waiting_for_work_product.state:
+            logger.info(f"[UNKNOWN] Routing to on_work_product for chat_id={chat_id}")
+            await on_work_product(message, state)
+            return
+        elif current_state == LearningStates.waiting_for_bonus_answer.state:
+            logger.info(f"[UNKNOWN] Routing to on_bonus_answer for chat_id={chat_id}")
+            await on_bonus_answer(message, state, message.bot)
+            return
+
+        # Неизвестное состояние — просто игнорируем
+        logger.warning(f"[UNKNOWN] Unknown state {current_state} for chat_id={chat_id}, ignoring message")
         return
 
     # Пользователь не в FSM-состоянии
