@@ -1,7 +1,7 @@
 """
 E2E тесты Марафона (Класс 2: Марафон).
 
-Сценарии 2.1 - 2.15 из docs/testing-scenarios.md
+Сценарии 2.1 - 2.15 из tests/testing-scenarios.md
 
 Запуск:
     pytest tests/e2e/test_02_marathon.py -v
