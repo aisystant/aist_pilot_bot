@@ -1,0 +1,1267 @@
+# ТЗ для проверки соответствия кода сценариям
+# ============================================
+# Этот файл определяет маппинг между сценариями из docs/testing-scenarios.md
+# и элементами кода, которые их реализуют.
+#
+# Структура:
+#   - scenario_id: номер сценария (X.Y)
+#   - name: название сценария
+#   - priority: critical (основные) | normal (вспомогательные)
+#   - checks: список проверок
+#       - type: function | handler | localization | state | constant
+#       - file: путь к файлу (относительно корня проекта)
+#       - name: имя функции/обработчика/ключа
+#       - pattern: regex паттерн (опционально)
+
+version: "1.0"
+generated_from: "docs/testing-scenarios.md"
+
+# Веса для расчёта покрытия
+weights:
+  critical: 2  # Критичные сценарии весят вдвое больше
+  normal: 1
+
+# Пороги для цветовой индикации
+thresholds:
+  green: 90   # ≥90% = зелёный
+  yellow: 70  # 70-89% = жёлтый
+  # <70% = красный
+
+# ===========================================
+# КЛАСС 1: РЕГИСТРАЦИЯ И ОНБОРДИНГ
+# ===========================================
+class_1_registration:
+  name: "Регистрация и онбординг"
+  scenarios:
+    - id: "1.1"
+      name: "Первый запуск бота"
+      priority: critical
+      checks:
+        - type: handler
+          file: "bot.py"
+          name: "cmd_start"
+          description: "Обработчик команды /start"
+        - type: state
+          file: "bot.py"
+          name: "OnboardingStates"
+          description: "Состояния онбординга"
+        - type: localization
+          file: "locales.py"
+          keys: ["welcome.greeting", "welcome.intro"]
+          description: "Приветственные сообщения"
+
+    - id: "1.2"
+      name: "Выбор языка при регистрации"
+      priority: critical
+      checks:
+        - type: handler
+          file: "bot.py"
+          pattern: "language.*callback|callback.*language"
+          description: "Обработчик выбора языка"
+        - type: constant
+          file: "locales.py"
+          name: "SUPPORTED_LANGUAGES"
+          description: "Список поддерживаемых языков"
+
+    - id: "1.3"
+      name: "Ввод имени"
+      priority: critical
+      checks:
+        - type: state
+          file: "bot.py"
+          name: "waiting_for_name"
+          description: "Состояние ожидания имени"
+        - type: pattern
+          file: "db/queries/users.py"
+          pattern: "update_intern|intern.*name"
+          description: "Сохранение имени в БД"
+
+    - id: "1.4"
+      name: "Ввод занятия"
+      priority: normal
+      checks:
+        - type: state
+          file: "bot.py"
+          name: "waiting_for_occupation"
+          description: "Состояние ожидания занятия"
+
+    - id: "1.5"
+      name: "Ввод интересов"
+      priority: normal
+      checks:
+        - type: state
+          file: "bot.py"
+          name: "waiting_for_interests"
+          description: "Состояние ожидания интересов"
+
+    - id: "1.6"
+      name: "Выбор режима Марафон"
+      priority: critical
+      checks:
+        - type: function
+          file: "engines/mode_selector.py"
+          name: "select_marathon"
+          description: "Активация режима Марафон"
+        - type: constant
+          file: "config/settings.py"
+          name: "Mode.MARATHON"
+          description: "Константа режима Марафон"
+
+    - id: "1.7"
+      name: "Выбор режима Лента"
+      priority: critical
+      checks:
+        - type: function
+          file: "engines/mode_selector.py"
+          name: "select_feed"
+          description: "Активация режима Лента"
+        - type: constant
+          file: "config/settings.py"
+          name: "Mode.FEED"
+          description: "Константа режима Лента"
+
+    - id: "1.8"
+      name: "Повторный /start"
+      priority: normal
+      checks:
+        - type: function
+          file: "bot.py"
+          pattern: "get_intern|check.*user"
+          description: "Проверка существующего пользователя"
+
+    - id: "1.9"
+      name: "Ввод пустого имени"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "strip\\(\\)|not.*name|len.*name"
+          description: "Валидация имени"
+
+    - id: "1.10"
+      name: "Ввод очень длинного имени"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "\\[:.*\\]|max.*len|truncate"
+          description: "Ограничение длины имени"
+
+    - id: "1.11"
+      name: "Прерывание онбординга"
+      priority: normal
+      checks:
+        - type: state
+          file: "bot.py"
+          pattern: "OnboardingStates"
+          description: "Сохранение состояния онбординга"
+
+    - id: "1.12"
+      name: "/start во время онбординга"
+      priority: normal
+      checks:
+        - type: handler
+          file: "bot.py"
+          name: "cmd_start"
+          description: "Обработчик /start с состоянием"
+
+# ===========================================
+# КЛАСС 2: МАРАФОН
+# ===========================================
+class_2_marathon:
+  name: "Марафон"
+  scenarios:
+    - id: "2.1"
+      name: "Получение первого урока"
+      priority: critical
+      checks:
+        - type: handler
+          file: "bot.py"
+          name: "cmd_learn"
+          description: "Обработчик /learn"
+        - type: function
+          file: "bot.py"
+          name: "get_topic"
+          description: "Получение темы урока"
+        - type: function
+          file: "clients/claude.py"
+          name: "generate_content"
+          description: "Генерация материала"
+
+    - id: "2.2"
+      name: "Переход к вопросу урока"
+      priority: critical
+      checks:
+        - type: function
+          file: "bot.py"
+          name: "get_bloom_questions"
+          description: "Получение вопросов по сложности"
+        - type: function
+          file: "clients/claude.py"
+          name: "generate_question"
+          description: "Генерация вопроса"
+
+    - id: "2.3"
+      name: "Ответ на вопрос урока"
+      priority: critical
+      checks:
+        - type: state
+          file: "bot.py"
+          name: "waiting_for_answer"
+          description: "Состояние ожидания ответа на теорию"
+        - type: function
+          file: "db/queries/answers.py"
+          name: "save_answer"
+          description: "Сохранение ответа"
+
+    - id: "2.4"
+      name: "Получение обратной связи"
+      priority: critical
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "LearningStates\\.waiting_for_answer|@router.*waiting_for_answer"
+          description: "Обработчик ответа с обратной связью"
+
+    - id: "2.5"
+      name: "Переход к заданию"
+      priority: critical
+      checks:
+        - type: state
+          file: "bot.py"
+          pattern: "practice|task"
+          description: "Состояние задания"
+        - type: function
+          file: "bot.py"
+          pattern: "practice|task"
+          description: "Функция перехода к заданию"
+
+    - id: "2.6"
+      name: "Ответ на задание"
+      priority: critical
+      checks:
+        - type: state
+          file: "bot.py"
+          name: "waiting_for_work_product"
+          description: "Состояние ожидания рабочего продукта"
+
+    - id: "2.7"
+      name: "Бонусный вопрос"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "bonus|бонус"
+          description: "Логика бонусных вопросов"
+
+    - id: "2.8"
+      name: "Завершение дня"
+      priority: critical
+      checks:
+        - type: function
+          file: "bot.py"
+          pattern: "complete.*day|finish.*day|day.*complete"
+          description: "Завершение дня Марафона"
+
+    - id: "2.9"
+      name: "Прогресс Марафона"
+      priority: normal
+      checks:
+        - type: handler
+          file: "bot.py"
+          name: "cmd_progress"
+          description: "Команда /progress"
+        - type: function
+          file: "db/queries/activity.py"
+          name: "get_activity_stats"
+          description: "Получение статистики"
+
+    - id: "2.10"
+      name: "Уровень сложности"
+      priority: normal
+      checks:
+        - type: constant
+          file: "config/settings.py"
+          name: "COMPLEXITY_LEVELS"
+          description: "Уровни сложности"
+        - type: function
+          file: "core/helpers.py"
+          name: "get_bloom_questions"
+          description: "Вопросы по уровню"
+
+    - id: "2.11"
+      name: "Навигация по дням"
+      priority: normal
+      checks:
+        - type: function
+          file: "bot.py"
+          name: "get_marathon_day"
+          description: "Определение дня Марафона"
+
+    - id: "2.12"
+      name: "Запрос подсказки"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "hint|подсказ|help.*answer"
+          description: "Логика подсказок"
+
+    - id: "2.13"
+      name: "Вопрос пользователя"
+      priority: critical
+      checks:
+        - type: function
+          file: "engines/shared/question_handler.py"
+          pattern: "handle.*question|question.*handler"
+          description: "Обработка вопросов пользователя"
+        - type: function
+          file: "core/intent.py"
+          name: "detect_intent"
+          description: "Распознавание интента вопроса"
+
+    - id: "2.14"
+      name: "Консультация по теме"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "engines/shared/question_handler.py"
+          pattern: "question|answer|consult"
+          description: "Генерация консультации"
+        - type: pattern
+          file: "engines/shared/retrieval.py"
+          pattern: "search|retrieve"
+          description: "Поиск в базе знаний"
+
+    - id: "2.15"
+      name: "Завершение Марафона"
+      priority: critical
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "marathon.*complete|finish.*marathon|day.*14"
+          description: "Логика завершения 14-дневного Марафона"
+
+# ===========================================
+# КЛАСС 3: ЛЕНТА
+# ===========================================
+class_3_feed:
+  name: "Лента"
+  scenarios:
+    - id: "3.1"
+      name: "Получение дайджеста"
+      priority: critical
+      checks:
+        - type: function
+          file: "engines/feed/handlers.py"
+          name: "cmd_feed"
+          description: "Команда /learn в режиме Лента"
+        - type: pattern
+          file: "engines/feed/planner.py"
+          pattern: "generate.*digest|generate.*content"
+          description: "Генерация дайджеста"
+
+    - id: "3.2"
+      name: "Вопрос дайджеста"
+      priority: critical
+      checks:
+        - type: pattern
+          file: "engines/feed/handlers.py"
+          pattern: "question|вопрос"
+          description: "Вопрос к дайджесту"
+
+    - id: "3.3"
+      name: "Фиксация"
+      priority: critical
+      checks:
+        - type: function
+          file: "engines/feed/handlers.py"
+          name: "start_fixation"
+          description: "Обработка фиксации"
+        - type: pattern
+          file: "engines/feed/handlers.py"
+          pattern: "FeedStates|fixation"
+          description: "Состояние ожидания фиксации"
+
+    - id: "3.4"
+      name: "Меню тем"
+      priority: critical
+      checks:
+        - type: function
+          file: "engines/feed/handlers.py"
+          name: "show_topic_selection"
+          description: "Показ меню тем"
+        - type: pattern
+          file: "engines/feed/planner.py"
+          pattern: "select.*topic|topic.*select"
+          description: "Выбор тем на неделю"
+
+    - id: "3.5"
+      name: "Выбор тем"
+      priority: critical
+      checks:
+        - type: function
+          file: "engines/feed/handlers.py"
+          name: "parse_topic_selection"
+          description: "Парсинг выбора тем"
+
+    - id: "3.6"
+      name: "Начало недели"
+      priority: critical
+      checks:
+        - type: function
+          file: "engines/feed/engine.py"
+          name: "start_feed"
+          description: "Начало новой недели"
+        - type: pattern
+          file: "db/queries/feed.py"
+          pattern: "create.*week|insert.*feed_week"
+          description: "Создание недели в БД"
+
+    - id: "3.7"
+      name: "Статистика недели"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "engines/feed/handlers.py"
+          pattern: "stats|progress|week.*status"
+          description: "Статистика недели"
+
+    - id: "3.8"
+      name: "Дайджест на сегодня"
+      priority: critical
+      checks:
+        - type: function
+          file: "engines/feed/handlers.py"
+          name: "show_today_session"
+          description: "Дайджест текущего дня"
+
+    - id: "3.9"
+      name: "Fallback темы"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/feed/planner.py"
+          name: "get_fallback_topics"
+          description: "Стандартные темы"
+
+    - id: "3.10"
+      name: "Планирование недели"
+      priority: critical
+      checks:
+        - type: pattern
+          file: "engines/feed/planner.py"
+          pattern: "plan.*week|week.*plan|schedule"
+          description: "Планирование недели"
+        - type: pattern
+          file: "engines/feed/planner.py"
+          pattern: "distribute|assign.*topic|topic.*day"
+          description: "Распределение тем по дням"
+
+    - id: "3.11"
+      name: "Текущая неделя"
+      priority: normal
+      checks:
+        - type: function
+          file: "db/queries/feed.py"
+          name: "get_current_feed_week"
+          description: "Получение текущей недели"
+
+    - id: "3.12"
+      name: "Создание дайджеста"
+      priority: critical
+      checks:
+        - type: function
+          file: "db/queries/feed.py"
+          name: "create_feed_session"
+          description: "Создание сессии дайджеста"
+
+    - id: "3.13"
+      name: "Вопрос пользователя (Лента)"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/shared/question_handler.py"
+          pattern: "handle.*question"
+          description: "Обработка вопросов в Ленте"
+
+    - id: "3.14"
+      name: "Продолжительность сессии"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "engines/feed/engine.py"
+          pattern: "duration|session.*time|study.*duration"
+          description: "Расчёт продолжительности"
+
+# ===========================================
+# КЛАСС 4: ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ
+# ===========================================
+class_4_modes:
+  name: "Переключение режимов"
+  scenarios:
+    - id: "4.1"
+      name: "Команда /mode"
+      priority: critical
+      checks:
+        - type: handler
+          file: "engines/mode_selector.py"
+          name: "cmd_mode"
+          description: "Обработчик /mode"
+
+    - id: "4.2"
+      name: "Марафон → Лента"
+      priority: critical
+      checks:
+        - type: function
+          file: "engines/mode_selector.py"
+          name: "select_feed"
+          description: "Переключение на Ленту"
+
+    - id: "4.3"
+      name: "Лента → Марафон"
+      priority: critical
+      checks:
+        - type: function
+          file: "engines/mode_selector.py"
+          name: "select_marathon"
+          description: "Переключение на Марафон"
+
+    - id: "4.4"
+      name: "Отображение активного Марафона"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/mode_selector.py"
+          name: "show_marathon_activated"
+          description: "Показ активного Марафона"
+
+    - id: "4.5"
+      name: "Отображение активной Ленты"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/mode_selector.py"
+          name: "show_feed_activated"
+          description: "Показ активной Ленты"
+
+    - id: "4.6"
+      name: "Установка даты старта"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/mode_selector.py"
+          name: "marathon_set_date"
+          description: "Установка даты старта Марафона"
+
+    - id: "4.7"
+      name: "Установка напоминаний"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/mode_selector.py"
+          name: "marathon_set_reminders"
+          description: "Настройка напоминаний"
+
+    - id: "4.8"
+      name: "Установка сложности"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/mode_selector.py"
+          name: "marathon_set_difficulty"
+          description: "Установка уровня сложности"
+
+    - id: "4.9"
+      name: "Состояния настроек Марафона"
+      priority: normal
+      checks:
+        - type: state
+          file: "engines/mode_selector.py"
+          name: "MarathonSettingsStates"
+          description: "Состояния настроек"
+
+    - id: "4.10"
+      name: "Интеграция режимов"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/integration.py"
+          pattern: "integrate|route"
+          description: "Интеграция обоих режимов"
+
+# ===========================================
+# КЛАСС 5: НАСТРОЙКИ ПРОФИЛЯ
+# ===========================================
+class_5_settings:
+  name: "Настройки профиля"
+  scenarios:
+    - id: "5.1"
+      name: "Команда /update"
+      priority: critical
+      checks:
+        - type: handler
+          file: "bot.py"
+          pattern: "cmd_update|update.*profile"
+          description: "Обработчик /update"
+        - type: state
+          file: "bot.py"
+          name: "UpdateStates"
+          description: "Состояния обновления профиля"
+
+    - id: "5.2"
+      name: "Изменение имени"
+      priority: normal
+      checks:
+        - type: function
+          file: "db/queries/users.py"
+          name: "update_intern"
+          description: "Обновление данных пользователя"
+
+    - id: "5.3"
+      name: "Изменение занятия"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "occupation|занят"
+          description: "Обновление занятия"
+
+    - id: "5.4"
+      name: "Изменение интересов"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "interests|интерес"
+          description: "Обновление интересов"
+
+    - id: "5.5"
+      name: "Изменение языка"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "language|язык"
+          description: "Смена языка"
+
+    - id: "5.6"
+      name: "Изменение сложности"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "difficulty|сложност|bloom"
+          description: "Изменение уровня сложности"
+
+    - id: "5.7"
+      name: "Отображение профиля"
+      priority: critical
+      checks:
+        - type: function
+          file: "db/queries/users.py"
+          name: "get_intern"
+          description: "Получение профиля пользователя"
+
+    - id: "5.8"
+      name: "Валидация данных"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "valid|strip|len.*>"
+          description: "Валидация введённых данных"
+
+    - id: "5.9"
+      name: "Создание пользователя"
+      priority: critical
+      checks:
+        - type: pattern
+          file: "db/queries/users.py"
+          pattern: "INSERT INTO interns|update_intern|upsert"
+          description: "Создание нового пользователя"
+
+    - id: "5.10"
+      name: "Сохранение ответов"
+      priority: critical
+      checks:
+        - type: function
+          file: "db/queries/answers.py"
+          name: "save_answer"
+          description: "Сохранение ответов пользователя"
+
+    - id: "5.11"
+      name: "Рабочие продукты"
+      priority: normal
+      checks:
+        - type: function
+          file: "db/queries/answers.py"
+          name: "get_weekly_work_products"
+          description: "Получение рабочих продуктов"
+
+    - id: "5.12"
+      name: "Активность пользователя"
+      priority: normal
+      checks:
+        - type: function
+          file: "db/queries/activity.py"
+          name: "record_active_day"
+          description: "Запись активного дня"
+
+# ===========================================
+# КЛАСС 6: ЯЗЫК ИНТЕРФЕЙСА
+# ===========================================
+class_6_language:
+  name: "Язык интерфейса"
+  scenarios:
+    - id: "6.1"
+      name: "Русский язык"
+      priority: critical
+      checks:
+        - type: localization
+          file: "locales.py"
+          keys: ["ru"]
+          description: "Русская локализация"
+
+    - id: "6.2"
+      name: "Английский язык"
+      priority: critical
+      checks:
+        - type: localization
+          file: "locales.py"
+          keys: ["en"]
+          description: "Английская локализация"
+
+    - id: "6.3"
+      name: "Испанский язык"
+      priority: normal
+      checks:
+        - type: localization
+          file: "locales.py"
+          keys: ["es"]
+          description: "Испанская локализация"
+
+    - id: "6.4"
+      name: "Функция локализации"
+      priority: critical
+      checks:
+        - type: function
+          file: "locales.py"
+          pattern: "get.*text|translate|localize|\\["
+          description: "Функция получения текста"
+
+    - id: "6.5"
+      name: "Смена языка"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "set.*language|change.*language"
+          description: "Смена языка интерфейса"
+
+    - id: "6.6"
+      name: "Сохранение языка"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "db/queries/users.py"
+          pattern: "language"
+          description: "Сохранение языка в БД"
+
+    - id: "6.7"
+      name: "Приветственные сообщения"
+      priority: normal
+      checks:
+        - type: localization
+          file: "locales.py"
+          keys: ["welcome.greeting", "welcome.returning"]
+          description: "Приветствия на всех языках"
+
+    - id: "6.8"
+      name: "Кнопки интерфейса"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "locales.py"
+          pattern: "btn\\.|button"
+          description: "Локализация кнопок"
+
+# ===========================================
+# КЛАСС 7: КОМАНДЫ БОТА
+# ===========================================
+class_7_commands:
+  name: "Команды бота"
+  scenarios:
+    - id: "7.1"
+      name: "/start"
+      priority: critical
+      checks:
+        - type: handler
+          file: "bot.py"
+          name: "cmd_start"
+          description: "Обработчик /start"
+
+    - id: "7.2"
+      name: "/help"
+      priority: critical
+      checks:
+        - type: handler
+          file: "bot.py"
+          pattern: "cmd_help|help"
+          description: "Обработчик /help"
+
+    - id: "7.3"
+      name: "/learn"
+      priority: critical
+      checks:
+        - type: handler
+          file: "bot.py"
+          name: "cmd_learn"
+          description: "Обработчик /learn"
+
+    - id: "7.4"
+      name: "/update"
+      priority: critical
+      checks:
+        - type: handler
+          file: "bot.py"
+          pattern: "cmd_update|update"
+          description: "Обработчик /update"
+
+    - id: "7.5"
+      name: "/mode"
+      priority: critical
+      checks:
+        - type: handler
+          file: "engines/mode_selector.py"
+          name: "cmd_mode"
+          description: "Обработчик /mode"
+
+    - id: "7.6"
+      name: "/progress"
+      priority: critical
+      checks:
+        - type: handler
+          file: "bot.py"
+          name: "cmd_progress"
+          description: "Обработчик /progress"
+
+    - id: "7.7"
+      name: "Неизвестная команда"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "unknown|fallback|default"
+          description: "Обработка неизвестных команд"
+
+    - id: "7.8"
+      name: "Параметры команд"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "args|param|deep_link"
+          description: "Обработка параметров"
+
+    - id: "7.9"
+      name: "Дебаунс команд"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "debounce|throttle|rate.*limit"
+          description: "Защита от спама"
+
+    - id: "7.10"
+      name: "Команды в состоянии"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "state.*filter|StateFilter"
+          description: "Команды с учётом состояния"
+
+# ===========================================
+# КЛАСС 8: ГРАНИЧНЫЕ СЛУЧАИ
+# ===========================================
+class_8_edge_cases:
+  name: "Граничные случаи"
+  scenarios:
+    - id: "8.1"
+      name: "Пустое сообщение"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "not.*text|text.*is.*None|empty"
+          description: "Обработка пустых сообщений"
+
+    - id: "8.2"
+      name: "Длинное сообщение"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "\\[:4000\\]|max.*len|truncate"
+          description: "Ограничение длины"
+
+    - id: "8.3"
+      name: "Эмодзи"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "emoji|encode.*utf"
+          description: "Поддержка эмодзи"
+
+    - id: "8.4"
+      name: "Нелатиница"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "utf-8|unicode"
+          description: "Поддержка Unicode"
+
+    - id: "8.5"
+      name: "Спам кнопок"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "callback.*answer|answer.*callback"
+          description: "Обработка повторных нажатий"
+
+    - id: "8.6"
+      name: "Старые кнопки"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "expired|outdated|old.*button"
+          description: "Обработка устаревших кнопок"
+
+    - id: "8.7"
+      name: "Ошибка API"
+      priority: critical
+      checks:
+        - type: pattern
+          file: "clients/claude.py"
+          pattern: "try.*except|error|Exception"
+          description: "Обработка ошибок Claude API"
+
+    - id: "8.8"
+      name: "Ошибка БД"
+      priority: critical
+      checks:
+        - type: pattern
+          file: "db/connection.py"
+          pattern: "try.*except|error|Exception"
+          description: "Обработка ошибок БД"
+
+    - id: "8.9"
+      name: "Таймаут"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "clients/claude.py"
+          pattern: "timeout|Timeout"
+          description: "Обработка таймаутов"
+
+    - id: "8.10"
+      name: "Параллельные запросы"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "async|await|asyncio"
+          description: "Асинхронная обработка"
+
+    - id: "8.11"
+      name: "Медиа-файлы"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "photo|document|file|media"
+          description: "Обработка медиа"
+
+    - id: "8.12"
+      name: "Повторная отправка"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "resend|retry|duplicate"
+          description: "Защита от дублей"
+
+# ===========================================
+# КЛАСС 9: КАЧЕСТВО ИИ
+# ===========================================
+class_9_ai_quality:
+  name: "Качество ответов ИИ"
+  scenarios:
+    - id: "9.1"
+      name: "Генерация контента"
+      priority: critical
+      checks:
+        - type: function
+          file: "clients/claude.py"
+          name: "generate_content"
+          description: "Генерация материала"
+
+    - id: "9.2"
+      name: "Генерация вопросов"
+      priority: critical
+      checks:
+        - type: function
+          file: "clients/claude.py"
+          name: "generate_question"
+          description: "Генерация вопросов"
+
+    - id: "9.3"
+      name: "Генерация обратной связи"
+      priority: critical
+      checks:
+        - type: function
+          file: "clients/claude.py"
+          name: "generate_feedback"
+          description: "Генерация обратной связи"
+
+    - id: "9.4"
+      name: "Обработка вопросов"
+      priority: critical
+      checks:
+        - type: pattern
+          file: "engines/shared/question_handler.py"
+          pattern: "question|answer|handle"
+          description: "Ответы на вопросы пользователя"
+
+    - id: "9.5"
+      name: "Генерация фиксации"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "engines/feed/handlers.py"
+          pattern: "fixation|start_fixation"
+          description: "Генерация фиксации"
+
+    - id: "9.6"
+      name: "Персонализация"
+      priority: normal
+      checks:
+        - type: function
+          file: "core/helpers.py"
+          name: "get_personalization_prompt"
+          description: "Персонализация под пользователя"
+
+    - id: "9.7"
+      name: "Правила примеров"
+      priority: normal
+      checks:
+        - type: function
+          file: "core/helpers.py"
+          name: "get_example_rules"
+          description: "Правила для примеров"
+
+    - id: "9.8"
+      name: "Контекст беседы"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/shared/context.py"
+          pattern: "context|history"
+          description: "Управление контекстом"
+
+    - id: "9.9"
+      name: "Поиск в базе знаний"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/shared/retrieval.py"
+          pattern: "search|retrieve|find"
+          description: "Поиск релевантной информации"
+
+    - id: "9.10"
+      name: "MCP клиент"
+      priority: normal
+      checks:
+        - type: function
+          file: "clients/mcp.py"
+          pattern: "search|query"
+          description: "Интеграция с MCP"
+
+# ===========================================
+# КЛАСС 10: НАПОМИНАНИЯ
+# ===========================================
+class_10_reminders:
+  name: "Напоминания"
+  scenarios:
+    - id: "10.1"
+      name: "Настройка напоминаний"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/mode_selector.py"
+          name: "marathon_set_reminders"
+          description: "Установка напоминаний"
+
+    - id: "10.2"
+      name: "Расписание"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "schedule|reminder|notify"
+          description: "Логика расписания"
+
+    - id: "10.3"
+      name: "Временная зона"
+      priority: normal
+      checks:
+        - type: function
+          file: "bot.py"
+          name: "moscow_now"
+          description: "Работа с временной зоной"
+
+    - id: "10.4"
+      name: "Текущая дата"
+      priority: normal
+      checks:
+        - type: function
+          file: "bot.py"
+          name: "moscow_today"
+          description: "Получение текущей даты"
+
+    - id: "10.5"
+      name: "Включение/выключение"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "db/queries/users.py"
+          pattern: "reminder|notification"
+          description: "Сохранение настроек напоминаний"
+
+    - id: "10.6"
+      name: "Отправка напоминания"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "send.*reminder|notify.*user"
+          description: "Отправка уведомлений"
+
+    - id: "10.7"
+      name: "Время напоминания"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "config/settings.py"
+          pattern: "reminder.*time|notification.*hour"
+          description: "Настройка времени"
+
+    - id: "10.8"
+      name: "Дни напоминаний"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "config/settings.py"
+          pattern: "reminder.*day|weekday"
+          description: "Настройка дней недели"
+
+# ===========================================
+# КЛАСС 11: ПРОГРЕСС И СТАТИСТИКА
+# ===========================================
+class_11_progress:
+  name: "Прогресс и статистика"
+  scenarios:
+    - id: "11.1"
+      name: "Команда /progress"
+      priority: critical
+      checks:
+        - type: handler
+          file: "bot.py"
+          name: "cmd_progress"
+          description: "Обработчик /progress"
+
+    - id: "11.2"
+      name: "Статистика Марафона"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "marathon.*progress|progress.*marathon"
+          description: "Прогресс по Марафону"
+
+    - id: "11.3"
+      name: "Статистика Ленты"
+      priority: normal
+      checks:
+        - type: function
+          file: "engines/feed/handlers.py"
+          name: "show_week_stats"
+          description: "Статистика недели Ленты"
+
+    - id: "11.4"
+      name: "Активные дни"
+      priority: normal
+      checks:
+        - type: function
+          file: "db/queries/activity.py"
+          name: "get_activity_stats"
+          description: "Статистика активности"
+
+    - id: "11.5"
+      name: "Запись активности"
+      priority: normal
+      checks:
+        - type: function
+          file: "db/queries/activity.py"
+          name: "record_active_day"
+          description: "Запись активного дня"
+
+    - id: "11.6"
+      name: "Пройденные уроки"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "completed.*lesson|lesson.*count"
+          description: "Подсчёт пройденных уроков"
+
+    - id: "11.7"
+      name: "Пройденные задания"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "completed.*task|task.*count"
+          description: "Подсчёт пройденных заданий"
+
+    - id: "11.8"
+      name: "Рабочие продукты"
+      priority: normal
+      checks:
+        - type: function
+          file: "db/queries/answers.py"
+          name: "get_weekly_work_products"
+          description: "Рабочие продукты за неделю"
+
+    - id: "11.9"
+      name: "Общий прогресс"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "total.*progress|overall"
+          description: "Общий прогресс пользователя"
+
+    - id: "11.10"
+      name: "Достижения"
+      priority: normal
+      checks:
+        - type: pattern
+          file: "bot.py"
+          pattern: "achievement|badge|milestone"
+          description: "Система достижений"
