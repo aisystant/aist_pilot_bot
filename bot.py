@@ -1416,8 +1416,7 @@ def kb_update_profile(lang: str = 'ru') -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="⏰ " + t('buttons.schedule', lang), callback_data="upd_schedule")],
         [InlineKeyboardButton(text="📊 " + t('buttons.difficulty', lang), callback_data="upd_bloom"),
          InlineKeyboardButton(text="🤖 " + t('buttons.bot_mode', lang), callback_data="upd_mode")],
-        [InlineKeyboardButton(text="🌐 Language (en, es, ru)", callback_data="upd_language")],
-        [InlineKeyboardButton(text="❌ " + t('buttons.cancel', lang), callback_data="upd_cancel")]
+        [InlineKeyboardButton(text="🌐 Language (en, es, ru)", callback_data="upd_language")]
     ])
 
 def kb_bloom_level(lang: str = 'ru') -> InlineKeyboardMarkup:
@@ -1475,7 +1474,7 @@ def kb_language_select() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=get_language_name(lang), callback_data=f"lang_{lang}")]
         for lang in SUPPORTED_LANGUAGES
-    ] + [[InlineKeyboardButton(text="❌", callback_data="upd_cancel")]])
+    ])
 
 def progress_bar(completed: int, total: int) -> str:
     pct = int((completed / total) * 100) if total > 0 else 0
@@ -2273,14 +2272,6 @@ async def on_save_marathon_start(callback: CallbackQuery, state: FSMContext):
         f"/update — обновить ещё что-то",
         parse_mode="Markdown"
     )
-    await state.clear()
-
-@router.callback_query(UpdateStates.choosing_field, F.data == "upd_cancel")
-async def on_upd_cancel(callback: CallbackQuery, state: FSMContext):
-    intern = await get_intern(callback.message.chat.id)
-    lang = intern.get('language', 'ru')
-    await callback.answer(t('buttons.cancel', lang))
-    await callback.message.edit_text(t('commands.learn', lang))
     await state.clear()
 
 @router.callback_query(UpdateStates.choosing_field, F.data == "upd_language")
