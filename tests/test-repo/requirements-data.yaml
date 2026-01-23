@@ -1,0 +1,265 @@
+# ТЗ для проверки соответствия кода и документации данных
+# ========================================================
+# Этот файл определяет маппинг между docs/data/tables.md
+# и реальной схемой БД в db/models.py
+
+version: "1.0"
+source: "docs/data/tables.md"
+code_source: "db/models.py"
+
+# Веса для расчёта покрытия
+weights:
+  critical: 2
+  normal: 1
+
+thresholds:
+  green: 95   # Данные должны быть очень точными
+  yellow: 85
+
+# ===========================================
+# ТАБЛИЦА: interns
+# ===========================================
+table_interns:
+  name: "interns"
+  doc_section: "interns (Пользователи)"
+  priority: critical
+
+  required_fields:
+    - name: "chat_id"
+      type: "BIGINT"
+      constraint: "PRIMARY KEY"
+    - name: "name"
+      type: "TEXT"
+    - name: "mode"
+      type: "TEXT"
+      default: "'marathon'"
+    - name: "marathon_status"
+      type: "TEXT"
+    - name: "feed_status"
+      type: "TEXT"
+    - name: "active_days_total"
+      type: "INTEGER"
+    - name: "active_days_streak"
+      type: "INTEGER"
+    - name: "longest_streak"
+      type: "INTEGER"
+    - name: "last_active_date"
+      type: "DATE"
+    - name: "complexity_level"
+      type: "INTEGER"
+    - name: "created_at"
+      type: "TIMESTAMP"
+
+  check_pattern: "CREATE TABLE.*interns"
+
+# ===========================================
+# ТАБЛИЦА: answers
+# ===========================================
+table_answers:
+  name: "answers"
+  doc_section: "answers (Ответы)"
+  priority: critical
+
+  required_fields:
+    - name: "id"
+      type: "SERIAL"
+      constraint: "PRIMARY KEY"
+    - name: "chat_id"
+      type: "BIGINT"
+    - name: "mode"
+      type: "TEXT"
+    - name: "answer_type"
+      type: "TEXT"
+    - name: "answer"
+      type: "TEXT"
+    - name: "created_at"
+      type: "TIMESTAMP"
+
+  answer_types:
+    - value: "theory_answer"
+      description: "Ответ на урок"
+    - value: "work_product"
+      description: "Ответ на задание"
+    - value: "bonus_answer"
+      description: "Ответ на бонус"
+    - value: "fixation"
+      description: "Фиксация"
+
+  check_pattern: "CREATE TABLE.*answers"
+
+# ===========================================
+# ТАБЛИЦА: activity_log
+# ===========================================
+table_activity_log:
+  name: "activity_log"
+  doc_section: "activity_log (Лог активности)"
+  priority: critical
+
+  required_fields:
+    - name: "id"
+      type: "SERIAL"
+      constraint: "PRIMARY KEY"
+    - name: "chat_id"
+      type: "BIGINT"
+    - name: "activity_date"
+      type: "DATE"
+    - name: "activity_type"
+      type: "TEXT"
+    - name: "mode"
+      type: "TEXT"
+    - name: "created_at"
+      type: "TIMESTAMP"
+
+  constraints:
+    - type: "UNIQUE"
+      fields: ["chat_id", "activity_date", "activity_type"]
+
+  indexes:
+    - name: "idx_activity_date"
+      fields: ["chat_id", "activity_date"]
+
+  activity_types:
+    - value: "theory_answer"
+      description: "Ответ на вопрос урока"
+    - value: "work_product"
+      description: "Отправка рабочего продукта"
+    - value: "bonus_answer"
+      description: "Ответ на бонусный вопрос"
+    - value: "feed_fixation"
+      description: "Сохранение фиксации"
+
+  check_pattern: "CREATE TABLE.*activity_log"
+
+# ===========================================
+# ТАБЛИЦА: feed_weeks
+# ===========================================
+table_feed_weeks:
+  name: "feed_weeks"
+  doc_section: "feed_weeks (Недели Ленты)"
+  priority: critical
+
+  required_fields:
+    - name: "id"
+      type: "SERIAL"
+      constraint: "PRIMARY KEY"
+    - name: "chat_id"
+      type: "BIGINT"
+    - name: "week_number"
+      type: "INTEGER"
+    - name: "status"
+      type: "TEXT"
+    - name: "created_at"
+      type: "TIMESTAMP"
+
+  statuses:
+    - value: "planning"
+      description: "Выбор тем"
+    - value: "active"
+      description: "Активная неделя"
+    - value: "completed"
+      description: "Завершена"
+
+  check_pattern: "CREATE TABLE.*feed_weeks"
+
+# ===========================================
+# ТАБЛИЦА: feed_sessions
+# ===========================================
+table_feed_sessions:
+  name: "feed_sessions"
+  doc_section: "feed_sessions (Сессии Ленты / Дайджесты)"
+  priority: critical
+
+  required_fields:
+    - name: "id"
+      type: "SERIAL"
+      constraint: "PRIMARY KEY"
+    - name: "week_id"
+      type: "INTEGER"
+    - name: "topic_title"
+      type: "TEXT"
+    - name: "content"
+      type: "TEXT"
+    - name: "status"
+      type: "TEXT"
+    - name: "fixation_text"
+      type: "TEXT"
+    - name: "created_at"
+      type: "TIMESTAMP"
+
+  statuses:
+    - value: "active"
+      description: "Ожидает фиксации"
+    - value: "completed"
+      description: "Фиксация сохранена"
+
+  check_pattern: "CREATE TABLE.*feed_sessions"
+
+# ===========================================
+# ТАБЛИЦА: reminders
+# ===========================================
+table_reminders:
+  name: "reminders"
+  doc_section: "reminders (Напоминания)"
+  priority: normal
+
+  required_fields:
+    - name: "id"
+      type: "SERIAL"
+      constraint: "PRIMARY KEY"
+    - name: "chat_id"
+      type: "BIGINT"
+    - name: "reminder_type"
+      type: "TEXT"
+    - name: "scheduled_for"
+      type: "TIMESTAMP"
+    - name: "sent"
+      type: "BOOLEAN"
+    - name: "created_at"
+      type: "TIMESTAMP"
+
+  check_pattern: "CREATE TABLE.*reminders"
+
+# ===========================================
+# ТАБЛИЦА: qa_history
+# ===========================================
+table_qa_history:
+  name: "qa_history"
+  doc_section: "qa_history (История вопросов)"
+  priority: normal
+
+  required_fields:
+    - name: "id"
+      type: "SERIAL"
+      constraint: "PRIMARY KEY"
+    - name: "chat_id"
+      type: "BIGINT"
+    - name: "question"
+      type: "TEXT"
+    - name: "answer"
+      type: "TEXT"
+    - name: "created_at"
+      type: "TIMESTAMP"
+
+  check_pattern: "CREATE TABLE.*qa_history"
+
+# ===========================================
+# ПРОВЕРКИ КОНСИСТЕНТНОСТИ
+# ===========================================
+consistency_checks:
+  # Все FK должны ссылаться на существующие таблицы
+  - type: "foreign_key_consistency"
+    description: "Все FK ссылаются на существующие таблицы"
+
+  # Все answer_type должны быть задокументированы
+  - type: "enum_consistency"
+    table: "answers"
+    field: "answer_type"
+    doc_source: "docs/data/tables.md"
+    description: "Все answer_type задокументированы"
+
+  # Все activity_type должны быть задокументированы
+  - type: "enum_consistency"
+    table: "activity_log"
+    field: "activity_type"
+    doc_source: "docs/data/tables.md"
+    description: "Все activity_type задокументированы"

@@ -1,0 +1,219 @@
+# ТЗ для проверки соответствия кода процессам
+# =============================================
+# Этот файл определяет маппинг между процессами из docs/processes/
+# и элементами кода, которые их реализуют.
+
+version: "1.0"
+source: "docs/processes/"
+
+# Веса для расчёта покрытия
+weights:
+  critical: 2
+  normal: 1
+
+thresholds:
+  green: 90
+  yellow: 70
+
+# ===========================================
+# P-01: ОТСЛЕЖИВАНИЕ АКТИВНОСТИ
+# ===========================================
+process_01_activity_tracking:
+  id: "P-01"
+  name: "Отслеживание активности"
+  doc: "docs/processes/process-01-activity-tracking.md"
+  priority: critical
+
+  checks:
+    # Основная функция записи
+    - type: function
+      file: "db/queries/activity.py"
+      name: "record_active_day"
+      description: "Запись активного дня"
+      required: true
+
+    # Получение статистики
+    - type: function
+      file: "db/queries/activity.py"
+      name: "get_activity_stats"
+      description: "Получение статистики активности"
+      required: true
+
+    # Таблица activity_log
+    - type: table
+      file: "db/models.py"
+      pattern: "CREATE TABLE.*activity_log"
+      description: "Таблица activity_log"
+      required: true
+
+    # Уникальный индекс
+    - type: pattern
+      file: "db/models.py"
+      pattern: "UNIQUE\\(chat_id, activity_date, activity_type\\)"
+      description: "UNIQUE ограничение на activity_log"
+      required: true
+
+    # Поля streak в interns
+    - type: pattern
+      file: "db/models.py"
+      pattern: "active_days_streak|active_days_total|longest_streak"
+      description: "Поля streak в таблице interns"
+      required: true
+
+    # Вызовы в bot.py (Марафон)
+    - type: pattern
+      file: "bot.py"
+      pattern: "record_active_day.*theory_answer|record_active_day.*work_product"
+      description: "Вызовы record_active_day в Марафоне"
+      required: true
+
+    # Вызовы в feed/engine.py (Лента)
+    - type: pattern
+      file: "engines/feed/engine.py"
+      pattern: "record_active_day.*feed_fixation"
+      description: "Вызовы record_active_day в Ленте"
+      required: true
+
+  data_writes:
+    - table: "activity_log"
+      fields: ["chat_id", "activity_date", "activity_type", "mode"]
+    - table: "interns"
+      fields: ["active_days_total", "active_days_streak", "longest_streak", "last_active_date"]
+
+  data_reads:
+    - table: "activity_log"
+      query: "SELECT COUNT DISTINCT activity_date"
+    - table: "interns"
+      fields: ["active_days_total", "active_days_streak"]
+
+# ===========================================
+# P-02: ГЕНЕРАЦИЯ КОНТЕНТА
+# ===========================================
+process_02_content_generation:
+  id: "P-02"
+  name: "Генерация контента"
+  doc: "docs/processes/process-02-content-generation.md"
+  priority: critical
+
+  checks:
+    # Claude клиент
+    - type: function
+      file: "clients/claude.py"
+      name: "generate_content"
+      description: "Генерация материала через Claude"
+      required: true
+
+    # Генерация вопросов
+    - type: function
+      file: "clients/claude.py"
+      name: "generate_question"
+      description: "Генерация вопросов"
+      required: true
+
+    # MCP интеграция
+    - type: pattern
+      file: "clients/mcp.py"
+      pattern: "search|query|retrieve"
+      description: "MCP поиск в базе знаний"
+      required: false
+
+    # Промпты
+    - type: pattern
+      file: "bot.py"
+      pattern: "system_prompt|user_prompt"
+      description: "Формирование промптов"
+      required: true
+
+  external_services:
+    - name: "Claude API"
+      model: "claude-sonnet-4"
+    - name: "MCP Servers"
+      servers: ["guides", "knowledge"]
+
+# ===========================================
+# P-03: ОПРЕДЕЛЕНИЕ ИНТЕНТА
+# ===========================================
+process_03_intent_detection:
+  id: "P-03"
+  name: "Определение интента"
+  doc: "docs/processes/process-03-intent-detection.md"
+  priority: critical
+
+  checks:
+    # Основная функция
+    - type: function
+      file: "core/intent.py"
+      name: "detect_intent"
+      description: "Определение интента сообщения"
+      required: true
+
+    # Типы интентов
+    - type: pattern
+      file: "core/intent.py"
+      pattern: "IntentType|ANSWER|QUESTION|COMMAND"
+      description: "Перечисление типов интентов"
+      required: true
+
+    # Использование в bot.py
+    - type: pattern
+      file: "bot.py"
+      pattern: "detect_intent|IntentType"
+      description: "Использование detect_intent в обработчиках"
+      required: true
+
+  intent_types:
+    - "ANSWER"
+    - "QUESTION"
+    - "COMMAND"
+    - "GREETING"
+    - "FEEDBACK"
+    - "OTHER"
+
+# ===========================================
+# P-04: СБОР СТАТИСТИКИ
+# ===========================================
+process_04_stats_collection:
+  id: "P-04"
+  name: "Сбор статистики"
+  doc: "docs/processes/process-04-stats-collection.md"
+  priority: normal
+
+  checks:
+    # Статистика активности
+    - type: function
+      file: "db/queries/activity.py"
+      name: "get_activity_stats"
+      description: "Получение статистики активности"
+      required: true
+
+    # Статистика ответов
+    - type: pattern
+      file: "db/queries/answers.py"
+      pattern: "get_weekly|count.*answers"
+      description: "Статистика ответов"
+      required: true
+
+    # Команда /progress
+    - type: handler
+      file: "bot.py"
+      name: "cmd_progress"
+      description: "Обработчик /progress"
+      required: true
+
+    # Полный отчёт
+    - type: pattern
+      file: "bot.py"
+      pattern: "show_full_progress|progress_full"
+      description: "Полный отчёт"
+      required: true
+
+  aggregations:
+    - metric: "active_days_week"
+      source: "activity_log"
+      period: "7 days"
+    - metric: "work_products_week"
+      source: "answers"
+      period: "7 days"
+    - metric: "digests_week"
+      source: "feed_sessions"
+      period: "7 days"

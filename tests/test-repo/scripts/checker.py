@@ -124,7 +124,7 @@ def main():
     else:
         project_root = scenario_dir.parent.parent  # tests/test-repo -> aist_track_bot
 
-    requirements_path = scenario_dir / 'requirements.yaml'
+    requirements_path = scenario_dir / 'requirements-scenarios.yaml'
     reports_dir = scenario_dir / 'reports'
 
     # Проверяем наличие ТЗ
