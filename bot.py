@@ -2093,22 +2093,22 @@ async def cmd_help(message: Message):
         f"📚 *{t('help.feed', lang)}* — {t('help.feed_desc', lang)}\n\n"
         f"💬 {t('help.ai_questions', lang)}\n"
         f"_{t('help.ai_questions_example', lang)}_\n\n"
-        f"*{t('help.commands_title', lang)}:*\n"
+        f"📋 *{t('help.commands_title', lang)}:*\n"
         f"{t('commands.learn', lang)}\n"
         f"/feed — {t('help.feed_cmd', lang)}\n"
         f"/mode — {t('menu.mode', lang)}\n"
         f"{t('commands.progress', lang)}\n"
         f"{t('commands.profile', lang)}\n"
         f"{t('commands.update', lang)}\n\n"
-        f"*{t('help.how_it_works', lang)}:*\n"
+        f"🔄 *{t('help.how_it_works', lang)}:*\n"
         f"{t('help.step1', lang)}\n"
         f"{t('help.step2', lang)}\n"
         f"{t('help.step3', lang)}\n"
         f"{t('help.step4', lang)}\n"
         f"{t('help.step5', lang)}\n\n"
-        f"_{t('help.schedule_note', lang)}_\n\n"
-        "🔗 [Мастерская инженеров-менеджеров](https://system-school.ru/)\n\n"
-        f"💬 {t('help.feedback', lang)}: @tserentserenov",
+        f"💡 _{t('help.schedule_note', lang)}_\n\n"
+        f"💬 {t('help.feedback', lang)}: @tserentserenov\n\n"
+        "🔗 [Мастерская инженеров-менеджеров](https://system-school.ru/)",
         parse_mode="Markdown"
     )
 
