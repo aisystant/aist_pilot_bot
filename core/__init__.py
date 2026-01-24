@@ -4,8 +4,9 @@
 Содержит:
 - helpers.py: вспомогательные функции для генерации контента
 - intent.py: распознавание намерений пользователя
+- machine.py: StateMachine — движок переходов между стейтами
+- storage.py: StateStorage — хранение состояния пользователей
 - router.py: маршрутизация по режимам (Марафон/Лента) - TODO
-- states.py: FSM состояния - TODO
 - scheduler.py: настройка APScheduler - TODO
 """
 
@@ -27,6 +28,9 @@ from .intent import (
     get_question_keywords,
 )
 
+from .machine import StateMachine, InvalidTransition, StateNotFound
+from .storage import StateStorage
+
 __all__ = [
     # helpers
     'load_topic_metadata',
@@ -42,4 +46,10 @@ __all__ = [
     'is_clear_question',
     'question_likelihood',
     'get_question_keywords',
+    # machine
+    'StateMachine',
+    'InvalidTransition',
+    'StateNotFound',
+    # storage
+    'StateStorage',
 ]
