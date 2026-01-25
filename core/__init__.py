@@ -28,8 +28,10 @@ from .intent import (
     get_question_keywords,
 )
 
-from .machine import StateMachine, InvalidTransition, StateNotFound
-from .storage import StateStorage
+# StateMachine и StateStorage не импортируются автоматически,
+# так как они зависят от модуля states, который загружается отдельно.
+# Используйте: from core.machine import StateMachine
+#              from core.storage import StateStorage
 
 __all__ = [
     # helpers
@@ -46,10 +48,4 @@ __all__ = [
     'is_clear_question',
     'question_likelihood',
     'get_question_keywords',
-    # machine
-    'StateMachine',
-    'InvalidTransition',
-    'StateNotFound',
-    # storage
-    'StateStorage',
 ]
