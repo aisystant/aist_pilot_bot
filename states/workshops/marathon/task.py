@@ -95,8 +95,8 @@ class MarathonTaskState(BaseState):
         Обрабатываем ответ с рабочим продуктом.
 
         Возвращает:
-        - "submitted" → day (следующий день, если есть)
-        - "day_complete" → day (день завершён)
+        - "submitted" → lesson (следующий урок)
+        - "day_complete" → lesson (день завершён)
         - None → остаёмся (короткий ответ)
         """
         text = (message.text or "").strip()
