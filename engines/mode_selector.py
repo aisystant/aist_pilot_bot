@@ -261,14 +261,26 @@ async def marathon_learn(callback: CallbackQuery, state: FSMContext):
 
     await callback.answer()
 
+    # Сохраняем chat_id и bot ДО удаления сообщения
+    chat_id = callback.message.chat.id
+    bot = callback.bot
+
     # Удаляем текущее сообщение, чтобы не было путаницы
     try:
         await callback.message.delete()
     except Exception:
         pass
 
-    # Вызываем send_topic напрямую
-    await send_topic(callback.message.chat.id, state, callback.bot)
+    # Вызываем send_topic с обработкой ошибок
+    try:
+        await send_topic(chat_id, state, bot)
+    except Exception as e:
+        logger.error(f"Ошибка в marathon_learn для {chat_id}: {e}")
+        await bot.send_message(
+            chat_id,
+            "⚠️ Произошла ошибка. Попробуйте /learn",
+            parse_mode="Markdown"
+        )
 
 
 @mode_router.callback_query(F.data == "marathon_back_to_mode")
