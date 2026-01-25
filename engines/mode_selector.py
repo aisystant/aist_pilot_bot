@@ -257,32 +257,40 @@ async def marathon_continue(callback: CallbackQuery):
 @mode_router.callback_query(F.data == "marathon_learn")
 async def marathon_learn(callback: CallbackQuery, state: FSMContext):
     """Продолжить обучение — вызывает функционал /learn"""
-    from bot import send_topic
+    # Импортируем модуль целиком, чтобы получить актуальное значение db_pool
+    import bot as bot_module
 
     await callback.answer()
 
     chat_id = callback.message.chat.id
-    bot = callback.bot
+    tg_bot = callback.bot
 
-    # Убираем кнопки (как в рабочем cb_learn)
+    # Убираем кнопки
     try:
         await callback.message.edit_reply_markup()
     except Exception:
         pass
 
+    # Проверяем, что db_pool инициализирован
+    if bot_module.db_pool is None:
+        logger.error(f"db_pool is None в marathon_learn для {chat_id}")
+        await tg_bot.send_message(
+            chat_id,
+            "⚠️ База данных не готова. Попробуйте /learn",
+            parse_mode="Markdown"
+        )
+        return
+
     # Вызываем send_topic
     try:
-        await send_topic(chat_id, None, bot)
+        await bot_module.send_topic(chat_id, state, tg_bot)
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
         logger.error(f"Ошибка в marathon_learn для {chat_id}: {e}\n{error_trace}")
-        # Показываем traceback для отладки
-        trace_lines = error_trace.strip().split('\n')
-        short_trace = '\n'.join(trace_lines[-8:])
-        await bot.send_message(
+        await tg_bot.send_message(
             chat_id,
-            f"⚠️ Ошибка:\n```\n{short_trace[:800]}\n```",
+            "⚠️ Произошла ошибка. Попробуйте /learn",
             parse_mode="Markdown"
         )
 
