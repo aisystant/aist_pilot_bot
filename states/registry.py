@@ -17,6 +17,8 @@ from i18n import I18n
 # Импортируем стейты
 from states.common import StartState, ErrorState, ModeSelectState
 
+# Марафон (частично реализовано)
+from states.workshops.marathon import MarathonBonusState
 # TODO: Неделя 2 — раскомментировать после создания
 # from states.workshops.marathon import MarathonDayState, MarathonQuestionState, MarathonTaskState
 
@@ -58,7 +60,9 @@ def register_all_states(
         ErrorState(*args),
         ModeSelectState(*args),
 
-        # TODO: Marathon стейты (Неделя 2)
+        # Marathon стейты (частично реализовано)
+        MarathonBonusState(*args),
+        # TODO: Неделя 2 — раскомментировать после создания
         # MarathonDayState(*args),
         # MarathonQuestionState(*args),
         # MarathonTaskState(*args),
@@ -95,6 +99,7 @@ def get_available_states() -> list[str]:
         # Marathon (Неделя 2)
         "workshop.marathon.day",
         "workshop.marathon.question",
+        "workshop.marathon.bonus",
         "workshop.marathon.task",
 
         # Consultant (Неделя 3-4)
