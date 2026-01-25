@@ -25,8 +25,8 @@ from states.workshops.marathon import (
     MarathonTaskState,
 )
 
-# TODO: Неделя 4 — раскомментировать после создания
-# from states.feed import FeedTopicsState, FeedDigestState
+# Лента (реализовано)
+from states.feed import FeedTopicsState, FeedDigestState
 
 # TODO: Неделя 6 — раскомментировать после создания
 # from states.utilities import NotesState, ExportState
@@ -67,9 +67,9 @@ def register_all_states(
         MarathonBonusState(*args),
         MarathonTaskState(*args),
 
-        # TODO: Feed стейты (Неделя 4)
-        # FeedTopicsState(*args),
-        # FeedDigestState(*args),
+        # Feed стейты (Лента)
+        FeedTopicsState(*args),
+        FeedDigestState(*args),
 
         # TODO: Utility стейты (Неделя 6)
         # NotesState(*args),

@@ -7,6 +7,9 @@
 
 Flow:
   topics → digest → [fixation] → digest (следующий) → ... → topics (новая неделя)
-
-TODO: Будет реализовано на Неделе 4.
 """
+
+from .topics import FeedTopicsState
+from .digest import FeedDigestState
+
+__all__ = ['FeedTopicsState', 'FeedDigestState']
