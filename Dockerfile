@@ -23,5 +23,6 @@ COPY core/ ./core/
 COPY clients/ ./clients/
 COPY engines/ ./engines/
 COPY topics/ ./topics/
+COPY states/ ./states/
 
 CMD ["python", "bot.py"]
