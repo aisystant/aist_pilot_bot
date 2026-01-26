@@ -42,6 +42,8 @@ class StateMachine:
         self._transitions: dict[str, dict] = {}
         self._global_events: dict[str, dict] = {}
         self._default_state: str = "common.start"
+        # История предыдущих стейтов: chat_id -> previous_state_name
+        self._previous_states: dict[int, str] = {}
 
     def load_transitions(self, path: str | Path) -> None:
         """
@@ -115,13 +117,14 @@ class StateMachine:
 
         return state_name or self._default_state
 
-    def get_next_state(self, current_state: str, event: str) -> Optional[str]:
+    def get_next_state(self, current_state: str, event: str, chat_id: int = None) -> Optional[str]:
         """
         Определить следующий стейт по событию.
 
         Args:
             current_state: Текущий стейт
             event: Событие (возвращаемое из handle)
+            chat_id: ID чата для получения previous_state
 
         Returns:
             Имя следующего стейта или None если переход не определён
@@ -135,10 +138,20 @@ class StateMachine:
         if next_state == '_same':
             return current_state
         if next_state == '_previous':
-            # TODO: Реализовать историю стейтов
-            return current_state
+            # Возвращаем предыдущий стейт или mode_select по умолчанию
+            return self._previous_states.get(chat_id, 'common.mode_select')
 
         return next_state
+
+    def set_previous_state(self, chat_id: int, state_name: str) -> None:
+        """
+        Сохранить предыдущий стейт для пользователя.
+
+        Args:
+            chat_id: ID чата
+            state_name: Имя стейта для сохранения
+        """
+        self._previous_states[chat_id] = state_name
 
     def check_global_event(self, message_text: str, current_state: str) -> Optional[str]:
         """
@@ -185,6 +198,9 @@ class StateMachine:
         current_state_name = self.get_user_state(user)
         current_state = self.get_state(current_state_name)
 
+        # Получаем chat_id для отслеживания previous_state
+        chat_id = user.get('chat_id') if isinstance(user, dict) else getattr(user, 'chat_id', None)
+
         if not current_state:
             logger.error(f"Стейт не найден: {current_state_name}")
             current_state = self.get_state(self._default_state)
@@ -197,7 +213,10 @@ class StateMachine:
         global_target = self.check_global_event(message_text, current_state_name)
 
         if global_target:
-            await self._transition(user, current_state, global_target)
+            # Сохраняем текущий стейт как "предыдущий" перед переходом в глобальный
+            if chat_id:
+                self.set_previous_state(chat_id, current_state_name)
+            await self._transition(user, current_state, global_target, context={'question': message_text[1:].strip()})
             return
 
         # Обрабатываем в текущем стейте
@@ -209,7 +228,7 @@ class StateMachine:
 
         # Если есть событие — переходим
         if event:
-            next_state_name = self.get_next_state(current_state_name, event)
+            next_state_name = self.get_next_state(current_state_name, event, chat_id)
             if next_state_name and next_state_name != current_state_name:
                 await self._transition(user, current_state, next_state_name)
 

@@ -3835,35 +3835,40 @@ async def main():
     # Инициализация БД
     await init_db()
 
+    # Создаём bot раньше, чтобы передать в State Machine
+    bot = Bot(token=BOT_TOKEN)
+
     # Инициализация State Machine (если включён флаг)
     state_machine = None
     if USE_STATE_MACHINE:
         try:
             from core.machine import StateMachine
             from config import BASE_DIR
+            from states.registry import register_all_states
+            from i18n import I18n
 
             state_machine = StateMachine()
             state_machine.load_transitions(BASE_DIR / "config" / "transitions.yaml")
 
-            # Регистрируем стейты
-            from states.common.start import StartState
-            from states.common.error import ErrorState
-            from states.common.mode_select import ModeSelectState
+            # Создаём зависимости для стейтов
+            i18n = I18n()
+            # db и llm пока None — они инициализируются позже
+            # Стейты будут использовать глобальные функции из db/queries
 
-            # TODO: Передать реальные зависимости (bot, db, llm, i18n)
-            # Пока создаём без них — они будут инжектиться позже
-            state_machine.register_all([
-                StartState(bot=None, db=None, llm=None, i18n=None),
-                ErrorState(bot=None, db=None, llm=None, i18n=None),
-                ModeSelectState(bot=None, db=None, llm=None, i18n=None),
-            ])
+            register_all_states(
+                machine=state_machine,
+                bot=bot,
+                db=None,  # Используем глобальные db функции
+                llm=None,  # Используем глобальный Claude client
+                i18n=i18n
+            )
 
             logger.info(f"✅ StateMachine инициализирован ({len(state_machine._states)} стейтов)")
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации StateMachine: {e}")
+            import traceback
+            traceback.print_exc()
             state_machine = None
-
-    bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher(storage=PostgresStorage())
 
     # Регистрируем middleware для логирования
