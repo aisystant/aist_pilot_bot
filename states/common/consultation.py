@@ -149,6 +149,8 @@ class ConsultationState(BaseState):
                 return "followup"
 
         # Любое другое сообщение — возврат
+        # Сообщаем что консультация завершена
+        await self.send(user, t('consultation.returning', lang))
         return "done"
 
     async def exit(self, user) -> dict:

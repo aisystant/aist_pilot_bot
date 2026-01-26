@@ -286,6 +286,13 @@ TRANSLATIONS = {
         'buttons.back_to_menu': '« Назад',
         'buttons.select_topics': 'Выбрать темы на неделю',
         'buttons.reset_topics': 'Сгенерировать заново',
+
+        # Консультация
+        'consultation.thinking': 'Думаю...',
+        'consultation.no_question': 'Пожалуйста, задайте вопрос после знака "?"',
+        'consultation.error': 'Произошла ошибка при обработке вопроса. Попробуйте ещё раз.',
+        'consultation.sources': 'Источники',
+        'consultation.returning': '↩️ Возвращаюсь к предыдущему занятию.',
     },
 
     'en': {
@@ -564,6 +571,13 @@ TRANSLATIONS = {
         'buttons.back_to_menu': '« Back',
         'buttons.select_topics': 'Select week topics',
         'buttons.reset_topics': 'Regenerate topics',
+
+        # Consultation
+        'consultation.thinking': 'Thinking...',
+        'consultation.no_question': 'Please ask a question after the "?" sign',
+        'consultation.error': 'An error occurred while processing your question. Please try again.',
+        'consultation.sources': 'Sources',
+        'consultation.returning': '↩️ Returning to previous activity.',
     },
 
     'es': {
@@ -842,6 +856,13 @@ TRANSLATIONS = {
         'buttons.back_to_menu': '« Volver',
         'buttons.select_topics': 'Seleccionar temas de la semana',
         'buttons.reset_topics': 'Regenerar temas',
+
+        # Consulta
+        'consultation.thinking': 'Pensando...',
+        'consultation.no_question': 'Por favor, haz una pregunta después del signo "?"',
+        'consultation.error': 'Se produjo un error al procesar tu pregunta. Inténtalo de nuevo.',
+        'consultation.sources': 'Fuentes',
+        'consultation.returning': '↩️ Volviendo a la actividad anterior.',
     }
 }
 
