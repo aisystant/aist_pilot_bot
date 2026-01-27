@@ -52,7 +52,7 @@ duration:
   minutes_25: "🕓 25 minutos"
 
 buttons:
-  yes: "Sí"
+  "yes": "Sí"
   cancel: "Cancelar"
   start_now: "Empezar ahora"
   start_scheduled: "Programado"
