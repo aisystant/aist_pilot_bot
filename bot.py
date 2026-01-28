@@ -1967,10 +1967,12 @@ async def cmd_progress(message: Message):
 
     intern = await get_intern(message.chat.id)
     if not intern or not intern.get('onboarding_completed'):
-        await message.answer("Сначала /start")
+        lang = intern.get('language', 'ru') if intern else 'ru'
+        await message.answer(t('errors.start_first', lang))
         return
 
     chat_id = message.chat.id
+    lang = intern.get('language', 'ru')
 
     try:
         # Получаем статистику
@@ -2007,18 +2009,18 @@ async def cmd_progress(message: Message):
     # Общие РП за неделю
     total_wp_week = marathon_stats.get('work_products', 0)
 
-    text = f"📊 *Прогресс: {intern['name']}*\n\n"
-    text += f"📈 Активных дней за неделю (Марафон+Лента): {days_active_week}\n\n"
+    text = t('progress.title', lang, name=intern['name']) + "\n\n"
+    text += f"{t('progress.active_days', lang)} {days_active_week} ({t('progress.marathon_header', lang).replace('*', '')}+{t('progress.feed_header', lang).replace('*', '')})\n\n"
 
     # Марафон
-    text += f"🏃 *Марафон*\n"
-    text += f"День {marathon_day}/{MARATHON_DAYS}\n"
-    text += f"Пройдено тем: {done}. Рабочих продуктов: {total_wp_week}\n\n"
+    text += t('progress.marathon_header', lang) + "\n"
+    text += t('progress.day_of_total', lang, day=marathon_day, total=MARATHON_DAYS) + "\n"
+    text += f"{t('progress.topics_completed', lang)} {done}. {t('buttons.work_products', lang)}: {total_wp_week}\n\n"
 
     # Лента
-    text += f"📚 *Лента*\n"
-    text += f"Дайджестов: {feed_stats.get('digests', 0)}. Фиксаций: {feed_stats.get('fixations', 0)}\n"
-    text += f"Темы: {feed_topics_text}"
+    text += t('progress.feed_header', lang) + "\n"
+    text += f"{t('progress.digests', lang)} {feed_stats.get('digests', 0)}. {t('progress.fixations', lang)} {feed_stats.get('fixations', 0)}\n"
+    text += f"{t('progress.topics_label', lang)} {feed_topics_text}"
 
     # Кнопки
     from config import Mode
@@ -2026,15 +2028,15 @@ async def cmd_progress(message: Message):
 
     # Кнопка продолжения зависит от режима
     if current_mode == Mode.FEED:
-        continue_btn = InlineKeyboardButton(text="📖 Получить дайджест", callback_data="feed_get_digest")
+        continue_btn = InlineKeyboardButton(text=t('buttons.get_digest', lang), callback_data="feed_get_digest")
     else:
-        continue_btn = InlineKeyboardButton(text="📚 Продолжить обучение", callback_data="learn")
+        continue_btn = InlineKeyboardButton(text=t('buttons.continue_learning', lang), callback_data="learn")
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [continue_btn],
         [
-            InlineKeyboardButton(text="📊 Полный отчёт", callback_data="progress_full"),
-            InlineKeyboardButton(text="⚙️ Настройки", callback_data="go_update")
+            InlineKeyboardButton(text=t('buttons.full_report', lang), callback_data="progress_full"),
+            InlineKeyboardButton(text=t('buttons.settings', lang), callback_data="go_update")
         ]
     ])
 

@@ -338,6 +338,18 @@ buttons:
     en: "✏️"
     max_length: 5
 
+  work_products:
+    ru: "Рабочих продуктов"
+    en: "Work products"
+
+  full_report:
+    ru: "📊 Полный отчёт"
+    en: "📊 Full report"
+
+  settings:
+    ru: "⚙️ Настройки"
+    en: "⚙️ Settings"
+
   back_to_menu:
     ru: "« Назад"
     en: "« Back"
