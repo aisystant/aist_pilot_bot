@@ -310,6 +310,12 @@ marathon:
   work_product_name: "nombre del producto de trabajo (≥3 caracteres)"
   answer_expected: "tu respuesta a la pregunta (≥20 caracteres)"
   question_hint: "Para hacer una pregunta a la IA, comienza tu mensaje con ?"
+  topic_skipped: "Tema saltado"
+  topic_skipped_message: "⏭ *Tema saltado:* {title}\n\n_Los temas saltados no cuentan para el progreso._\n\n/learn — siguiente tema\n/progress — ver progreso"
+  topic_default: "tema"
+  practice_skipped: "Tarea saltada"
+  practice_skipped_message: "⏭ *Tarea saltada:* {title}\n\n_Las tareas saltadas no cuentan para el progreso._\n\n/learn — siguiente tema\n/progress — ver progreso"
+  practice_default: "tarea"
 
 feed:
   suggested_topics: "Temas Sugeridos"

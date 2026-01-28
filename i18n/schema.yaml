@@ -1200,6 +1200,30 @@ marathon:
     ru: "Чтобы задать вопрос к ИИ, начните сообщение с ?"
     en: "To ask a question to AI, start your message with ?"
 
+  topic_skipped:
+    ru: "Тема пропущена"
+    en: "Topic skipped"
+
+  topic_skipped_message:
+    ru: "⏭ *Тема пропущена:* {title}\n\n_Пропущенные темы не засчитываются в прогресс._\n\n/learn — следующая тема\n/progress — посмотреть прогресс"
+    en: "⏭ *Topic skipped:* {title}\n\n_Skipped topics don't count toward progress._\n\n/learn — next topic\n/progress — view progress"
+
+  topic_default:
+    ru: "тема"
+    en: "topic"
+
+  practice_skipped:
+    ru: "Задание пропущено"
+    en: "Task skipped"
+
+  practice_skipped_message:
+    ru: "⏭ *Задание пропущено:* {title}\n\n_Пропущенные задания не засчитываются в прогресс._\n\n/learn — следующая тема\n/progress — посмотреть прогресс"
+    en: "⏭ *Task skipped:* {title}\n\n_Skipped tasks don't count toward progress._\n\n/learn — next topic\n/progress — view progress"
+
+  practice_default:
+    ru: "задание"
+    en: "task"
+
 # -----------------------------------------------------------------------------
 # Лента (Feed)
 # -----------------------------------------------------------------------------

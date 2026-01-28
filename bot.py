@@ -1332,6 +1332,17 @@ def get_topic(index: int) -> Optional[dict]:
     """Получить тему по индексу"""
     return TOPICS[index] if index < len(TOPICS) else None
 
+def get_topic_title(topic: dict, lang: str = 'ru') -> str:
+    """Получить название темы на нужном языке.
+
+    Ищет title_{lang} в topic, если нет - возвращает title (русский).
+    """
+    if lang != 'ru':
+        localized_key = f'title_{lang}'
+        if localized_key in topic:
+            return topic[localized_key]
+    return topic.get('title', '')
+
 def get_total_topics() -> int:
     """Получить общее количество тем"""
     return len(TOPICS)
@@ -2736,10 +2747,10 @@ async def on_answer(message: Message, state: FSMContext, bot: Bot):
         next_topic = next_available[0][1]  # (index, topic) -> topic
         # Определяем тип следующей темы
         if next_topic.get('type') == 'practice':
-            next_topic_hint = f"\n\n📝 *{t('marathon.next_task', lang)}:* {next_topic['title']}"
+            next_topic_hint = f"\n\n📝 *{t('marathon.next_task', lang)}:* {get_topic_title(next_topic, lang)}"
             next_command = t('marathon.continue_to_task', lang)
         else:
-            next_topic_hint = f"\n\n📚 *{t('marathon.next_lesson', lang)}:* {next_topic['title']}"
+            next_topic_hint = f"\n\n📚 *{t('marathon.next_lesson', lang)}:* {get_topic_title(next_topic, lang)}"
             next_command = t('marathon.continue_to_lesson', lang)
 
     # Если уровень ниже максимального — предлагаем дополнительный вопрос
@@ -2962,19 +2973,17 @@ async def on_bonus_answer(message: Message, state: FSMContext, bot: Bot):
 async def on_skip_topic(callback: CallbackQuery, state: FSMContext):
     """Пропуск теоретической темы без ответа"""
     intern = await get_intern(callback.message.chat.id)
+    lang = intern.get('language', 'ru') if intern else 'ru'
 
     next_index = intern['current_topic_index'] + 1
     await update_intern(callback.message.chat.id, current_topic_index=next_index)
 
     topic = get_topic(intern['current_topic_index'])
-    topic_title = topic['title'] if topic else "тема"
+    topic_title = get_topic_title(topic, lang) if topic else t('marathon.topic_default', lang)
 
-    await callback.answer("Тема пропущена")
+    await callback.answer(t('marathon.topic_skipped', lang))
     await callback.message.edit_text(
-        f"⏭ *Тема пропущена:* {topic_title}\n\n"
-        f"_Пропущенные темы не засчитываются в прогресс._\n\n"
-        f"/learn — следующая тема\n"
-        f"/progress — посмотреть прогресс",
+        t('marathon.topic_skipped_message', lang, title=topic_title),
         parse_mode="Markdown"
     )
     await state.clear()
@@ -3081,19 +3090,17 @@ async def on_work_product(message: Message, state: FSMContext):
 async def on_skip_practice(callback: CallbackQuery, state: FSMContext):
     """Пропуск практической темы"""
     intern = await get_intern(callback.message.chat.id)
+    lang = intern.get('language', 'ru') if intern else 'ru'
 
     next_index = intern['current_topic_index'] + 1
     await update_intern(callback.message.chat.id, current_topic_index=next_index)
 
     topic = get_topic(intern['current_topic_index'])
-    topic_title = topic['title'] if topic else "задание"
+    topic_title = get_topic_title(topic, lang) if topic else t('marathon.practice_default', lang)
 
-    await callback.answer("Задание пропущено")
+    await callback.answer(t('marathon.practice_skipped', lang))
     await callback.message.edit_text(
-        f"⏭ *Задание пропущено:* {topic_title}\n\n"
-        f"_Пропущенные задания не засчитываются в прогресс._\n\n"
-        f"/learn — следующая тема\n"
-        f"/progress — посмотреть прогресс",
+        t('marathon.practice_skipped_message', lang, title=topic_title),
         parse_mode="Markdown"
     )
     await state.clear()
@@ -3230,7 +3237,7 @@ async def send_theory_topic(chat_id: int, topic: dict, intern: dict, state: Opti
     # Используем день из темы, а не текущий день марафона
     header = (
         f"📚 *{t('marathon.day_theory', lang, day=topic_day)}*\n"
-        f"*{topic['title']}*\n"
+        f"*{get_topic_title(topic, lang)}*\n"
         f"⏱ {t('marathon.minutes', lang, minutes=intern['study_duration'])}\n\n"
     )
 
@@ -3284,7 +3291,7 @@ async def send_practice_topic(chat_id: int, topic: dict, intern: dict, state: Op
     # Используем день из темы, а не текущий день марафона
     header = (
         f"✏️ *{t('marathon.day_practice', lang, day=topic_day)}*\n"
-        f"*{topic['title']}*\n\n"
+        f"*{get_topic_title(topic, lang)}*\n\n"
     )
 
     content = f"{intro}\n\n" if intro else ""
@@ -3696,7 +3703,7 @@ async def on_unknown_message(message: Message, state: FSMContext):
                     await update_intern(chat_id, current_topic_index=practice_index)
                     # Нет state для FSM в fallback — практика будет принята через fallback практики
                     await message.answer(
-                        f"📝 *{t('marathon.task', lang)}:* {practice_topic['title']}\n\n"
+                        f"📝 *{t('marathon.task', lang)}:* {get_topic_title(practice_topic, lang)}\n\n"
                         f"_{practice_topic.get('description', '')}_ \n\n"
                         f"💬 *{t('marathon.waiting_for', lang)}:* {t('marathon.work_product_name', lang)}\n"
                         f"_{t('marathon.question_hint', lang)}_",

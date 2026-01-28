@@ -45,6 +45,8 @@ topics:
     day: 1
     type: "theory"
     title: "Четыре состояния: от застревания к развитию"
+    title_en: "Four States: From Stagnation to Growth"
+    title_es: "Cuatro estados: del estancamiento al desarrollo"
     main_concept: "диагностика состояния"
     related_concepts:
       - "хаос"
@@ -85,6 +87,8 @@ topics:
     day: 1
     type: "practice"
     title: "Моё текущее состояние"
+    title_en: "My Current State"
+    title_es: "Mi estado actual"
     main_concept: "самодиагностика"
     task: |
       Напиши текст "Моё текущее состояние":
@@ -107,6 +111,8 @@ topics:
     day: 2
     type: "theory"
     title: "Ловушка «жизни полегче»"
+    title_en: "The 'Easy Life' Trap"
+    title_es: "La trampa de la 'vida fácil'"
     main_concept: "ложное облегчение"
     related_concepts:
       - "ясность"
@@ -144,6 +150,8 @@ topics:
     day: 2
     type: "practice"
     title: "Первый слот саморазвития"
+    title_en: "First Self-Development Slot"
+    title_es: "Primer espacio de autodesarrollo"
     main_concept: "слот саморазвития"
     task: |
       Первое действие после диагностики (связь с Днём 1):
@@ -170,6 +178,8 @@ topics:
     day: 3
     type: "theory"
     title: "Вечерняя ловушка и поставка впечатлений"
+    title_en: "The Evening Trap and Managing Impressions"
+    title_es: "La trampa nocturna y la gestión de impresiones"
     main_concept: "вечерняя ловушка"
     related_concepts:
       - "поставка впечатлений"
@@ -203,6 +213,8 @@ topics:
     day: 3
     type: "practice"
     title: "Трекер слотов + новое впечатление"
+    title_en: "Slot Tracker + New Impression"
+    title_es: "Rastreador de espacios + nueva impresión"
     main_concept: "трекер с впечатлениями"
     task: |
       Трекер — не просто учёт времени, а комплексный инструмент:
@@ -231,6 +243,8 @@ topics:
     day: 4
     type: "theory"
     title: "Информационный шум и потеря фокуса"
+    title_en: "Information Noise and Loss of Focus"
+    title_es: "Ruido informativo y pérdida de enfoque"
     main_concept: "рассеянное внимание"
     related_concepts:
       - "флюгер"
@@ -263,6 +277,8 @@ topics:
     day: 4
     type: "practice"
     title: "Мимолётные заметки"
+    title_en: "Fleeting Notes"
+    title_es: "Notas fugaces"
     main_concept: "фиксация мыслей"
     task: |
       Начни практику мимолётных заметок (экзокортекс):
@@ -292,6 +308,8 @@ topics:
     day: 5
     type: "theory"
     title: "Цикл «перегрузка — выгорание — откат»"
+    title_en: "The Overload — Burnout — Relapse Cycle"
+    title_es: "El ciclo de sobrecarga — agotamiento — recaída"
     main_concept: "выгорание"
     related_concepts:
       - "героический режим"
@@ -333,6 +351,8 @@ topics:
     day: 5
     type: "practice"
     title: "Стоп-моменты"
+    title_en: "Stop Moments"
+    title_es: "Momentos de parada"
     main_concept: "осознание отвлечений"
     task: |
       Стоп-момент — момент, когда внимание уходит или энергия падает.
@@ -360,6 +380,8 @@ topics:
     day: 6
     type: "theory"
     title: "Почему советы не работают"
+    title_en: "Why Advice Doesn't Work"
+    title_es: "Por qué los consejos no funcionan"
     main_concept: "поверхностные решения"
     related_concepts:
       - "лайфхаки"
@@ -403,6 +425,8 @@ topics:
     day: 6
     type: "practice"
     title: "Гипотеза на неделю"
+    title_en: "Weekly Hypothesis"
+    title_es: "Hipótesis semanal"
     main_concept: "эксперимент"
     task: |
       Сформулируй гипотезу на основе СВОИХ данных за неделю:
@@ -432,6 +456,8 @@ topics:
     day: 7
     type: "theory"
     title: "Что такое личный прогресс"
+    title_en: "What is Personal Progress"
+    title_es: "Qué es el progreso personal"
     main_concept: "личный прогресс"
     related_concepts:
       - "факты vs ощущения"
@@ -474,6 +500,8 @@ topics:
     day: 7
     type: "practice"
     title: "Итоги недели + Похвала себе"
+    title_en: "Weekly Results + Self-Praise"
+    title_es: "Resultados de la semana + Elogio propio"
     main_concept: "итоги недели"
     task: |
       Подведи итоги первой недели по фактам + похвали себя:
@@ -515,6 +543,8 @@ topics:
     day: 8
     type: "theory"
     title: "Непродуктивные мемы о саморазвитии"
+    title_en: "Unproductive Memes About Self-Development"
+    title_es: "Memes improductivos sobre el autodesarrollo"
     main_concept: "непродуктивные мемы"
     related_concepts:
       - "мем и ген"
@@ -559,6 +589,8 @@ topics:
     day: 8
     type: "practice"
     title: "Рабочий продукт из слота"
+    title_en: "Work Product From Slot"
+    title_es: "Producto de trabajo del espacio"
     main_concept: "рабочий продукт"
     task: |
       Сегодня твой слот должен оставить рабочий продукт (РП):
@@ -594,6 +626,8 @@ topics:
     day: 9
     type: "theory"
     title: "Героизм vs систематичность"
+    title_en: "Heroism vs Consistency"
+    title_es: "Heroísmo vs sistematicidad"
     main_concept: "систематичность vs героизм"
     related_concepts:
       - "отстал — догоню"
@@ -638,6 +672,8 @@ topics:
     day: 9
     type: "practice"
     title: "ИИ как усиление"
+    title_en: "AI as Amplification"
+    title_es: "IA como amplificación"
     main_concept: "ИИ как усилитель"
     task: |
       Используй ИИ для создания рабочего продукта:
@@ -674,6 +710,8 @@ topics:
     day: 10
     type: "theory"
     title: "Почему одной мотивации недостаточно"
+    title_en: "Why Motivation Alone Isn't Enough"
+    title_es: "Por qué la motivación sola no es suficiente"
     main_concept: "набор практик vs мотивация"
     related_concepts:
       - "триггер → действие → награда"
@@ -714,6 +752,8 @@ topics:
     day: 10
     type: "practice"
     title: "Моё минимальное время"
+    title_en: "My Minimum Time"
+    title_es: "Mi tiempo mínimo"
     main_concept: "минимальное время"
     task: |
       Определи своё минимальное стабильное время и систему:
@@ -747,6 +787,8 @@ topics:
     day: 11
     type: "theory"
     title: "Обучение как инженерия себя"
+    title_en: "Learning as Self-Engineering"
+    title_es: "El aprendizaje como ingeniería de uno mismo"
     main_concept: "инженерия себя"
     related_concepts:
       - "всё есть инженерия"
@@ -786,6 +828,8 @@ topics:
     day: 11
     type: "practice"
     title: "Мой персональный чек-лист стоп-момента"
+    title_en: "My Personal Stop-Moment Checklist"
+    title_es: "Mi lista de verificación personal de momentos de parada"
     main_concept: "персональный чек-лист"
     task: |
       Создай персональный чек-лист стоп-момента — инженерный инструмент:
@@ -821,6 +865,8 @@ topics:
     day: 12
     type: "theory"
     title: "Собранность и экзокортекс"
+    title_en: "Focus and Exocortex"
+    title_es: "Concentración y exocórtex"
     main_concept: "экзокортекс"
     related_concepts:
       - "собранность"
@@ -869,6 +915,8 @@ topics:
     day: 12
     type: "practice"
     title: "Мои продуктивные мемы"
+    title_en: "My Productive Memes"
+    title_es: "Mis memes productivos"
     main_concept: "продуктивные мемы"
     task: |
       Итог марафона — собери свои продуктивные мемы.
@@ -908,6 +956,8 @@ topics:
     day: 13
     type: "theory"
     title: "Агентность: от реактивного к проактивному"
+    title_en: "Agency: From Reactive to Proactive"
+    title_es: "Agencia: de reactivo a proactivo"
     main_concept: "агентность"
     related_concepts:
       - "реактивный vs проактивный"
@@ -950,6 +1000,8 @@ topics:
     day: 13
     type: "practice"
     title: "Мои методы и инструменты агента"
+    title_en: "My Agent Methods and Tools"
+    title_es: "Mis métodos e instrumentos de agente"
     main_concept: "карта практик агента"
     task: |
       Нарисуй схему своих методов и инструментов — интеграция всего марафона.
@@ -995,6 +1047,8 @@ topics:
     day: 14
     type: "theory"
     title: "Время созидателей"
+    title_en: "The Age of Creators"
+    title_es: "La era de los creadores"
     main_concept: "время созидателей"
     related_concepts:
       - "ИИ как уравнитель"
@@ -1037,6 +1091,8 @@ topics:
     day: 14
     type: "practice"
     title: "План на месяц после марафона"
+    title_en: "Monthly Plan After Marathon"
+    title_es: "Plan mensual después del maratón"
     main_concept: "план созидателя"
     task: |
       Создай план на первый месяц после марафона.

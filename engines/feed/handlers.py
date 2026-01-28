@@ -762,13 +762,14 @@ async def show_today_session(message: Message, engine: FeedEngine, state: FSMCon
         depth_level = content.get('depth_level', session.get('day_number', 1))
 
         # Формируем заголовок
+        lang = await get_user_lang(message.chat.id)
         if topics_list:
             topics_str = ", ".join(topics_list)
-            text = f"📖 *Дайджест: {topics_str}*\n"
+            text = t('feed.digest_header', lang, topics=topics_str) + "\n"
         else:
             # Fallback для старых сессий
-            topic = session.get('topic_title', 'Темы дня')
-            text = f"📖 *Дайджест: {topic}*\n"
+            topic = session.get('topic_title', t('feed.topics_of_day', lang))
+            text = t('feed.digest_header', lang, topics=topic) + "\n"
 
         # Показываем уровень глубины
         if depth_level > 1:
@@ -783,9 +784,6 @@ async def show_today_session(message: Message, engine: FeedEngine, state: FSMCon
 
         if content.get('reflection_prompt'):
             text += f"\n\n💭 *{content['reflection_prompt']}*"
-
-        # Получаем язык для кнопок
-        lang = await get_user_lang(message.chat.id)
 
         # Добавляем подсказку о возможности задать вопрос
         text += f"\n\n—\n💡 _{t('feed.ask_details', lang)}_"
